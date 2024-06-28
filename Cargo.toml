@@ -1,0 +1,11 @@
+[package]
+name = "ssh-utils"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.86"
+backtrace = "0.3.73"
+clap = "4.5.7"
+crossterm = "0.27.0"
+ratatui = "0.27.0"
