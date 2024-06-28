@@ -3,11 +3,12 @@ mod app;
 use std::{io::{self, Stdout}, panic};
 use app::App;
 use backtrace::Backtrace;
-use crossterm::terminal::{
-		disable_raw_mode, enable_raw_mode
-	};
+use crossterm::{cursor::{RestorePosition, SavePosition}, execute, terminal::{
+		disable_raw_mode, enable_raw_mode, Clear, ClearType
+	}};
 use ratatui::{backend::CrosstermBackend, Terminal, TerminalOptions, Viewport};
-use anyhow::{Context, Ok, Result};
+use anyhow::{Context, Result};
+use std::io::stdout;
 
 fn main() -> Result<()> {
     set_panic_handlers()?;
@@ -32,7 +33,11 @@ fn setup_terminal(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<(
 }
 
 fn create_terminal() -> Result<Terminal<CrosstermBackend<Stdout>>> {
-    let stdout = io::stdout();
+    let mut stdout = io::stdout();
+    execute!(
+        stdout,
+        SavePosition
+    )?;
     enable_raw_mode()?;
     let terminal_option = TerminalOptions {
         //TODO: 设置最大行数
@@ -41,7 +46,13 @@ fn create_terminal() -> Result<Terminal<CrosstermBackend<Stdout>>> {
     Terminal::with_options(CrosstermBackend::new(stdout), terminal_option).context("unable to create terminal")
 }
 
+// restore terminal to status that before exec program
 fn restore_terminal() -> Result<()> {
+    execute!(
+        stdout(),
+        RestorePosition,
+        Clear(ClearType::FromCursorDown)
+    )?;
     disable_raw_mode()?;
     Ok(())
 }
@@ -49,8 +60,8 @@ fn restore_terminal() -> Result<()> {
 // handle all panic here
 fn set_panic_handlers() -> Result<()> {
 	panic::set_hook(Box::new(|e| {
-        if let Err(e) = disable_raw_mode() {
-            eprintln!("unable to disable raw mode:\n{e}");
+        if let Err(e) = restore_terminal() {
+            eprintln!("unable to restore terminal:\n{e}");
         }
 		let backtrace = Backtrace::new();
 		eprintln!("\nssh-utils was close due to an unexpected panic with the following info:\n\n{:?}\ntrace:\n{:?}", e, backtrace);
