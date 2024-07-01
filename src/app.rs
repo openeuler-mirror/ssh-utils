@@ -4,6 +4,7 @@ use crossterm::event;
 use crossterm::event::Event;
 use crossterm::event::KeyCode::*;
 use crossterm::event::KeyEventKind;
+use crossterm::event::KeyModifiers;
 use ratatui::backend::Backend;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Constraint;
@@ -153,6 +154,11 @@ impl App {
                         Char('q') | Esc => return Ok(()),
                         Char('j') | Down => self.server_list.next(),
                         Char('k') | Up => self.server_list.previous(),
+                        Char('c') => {
+                            if key.modifiers == KeyModifiers::CONTROL {
+                                return Ok(())
+                            }
+                        }
                         _ => {}
                     }
                 }
