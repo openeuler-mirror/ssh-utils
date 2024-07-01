@@ -1,8 +1,7 @@
 mod app;
 
-use std::{io::{self, Stdout}, panic};
+use std::{io::{self, Stdout}, panic::{self, PanicInfo}};
 use app::App;
-use backtrace::Backtrace;
 use crossterm::{cursor::{RestorePosition, SavePosition}, execute, terminal::{
 		disable_raw_mode, enable_raw_mode, Clear, ClearType
 	}};
@@ -11,7 +10,8 @@ use anyhow::{Context, Result};
 use std::io::stdout;
 
 fn main() -> Result<()> {
-    set_panic_handlers()?;
+    // Setup panic hook
+    panic::set_hook(Box::new(panic_hook));
     let mut terminal = create_terminal()?;
 
     setup_terminal(&mut terminal)?;
@@ -57,14 +57,32 @@ fn restore_terminal() -> Result<()> {
     Ok(())
 }
 
-// handle all panic here
-fn set_panic_handlers() -> Result<()> {
-	panic::set_hook(Box::new(|e| {
-        if let Err(e) = restore_terminal() {
-            eprintln!("unable to restore terminal:\n{e}");
-        }
-		let backtrace = Backtrace::new();
-		eprintln!("\nssh-utils was close due to an unexpected panic with the following info:\n\n{:?}\ntrace:\n{:?}", e, backtrace);
-	}));
-	Ok(())
+/// A panic hook to properly restore the terminal in the case of a panic.
+/// Originally based on [spotify-tui's implementation](https://github.com/Rigellute/spotify-tui/blob/master/src/main.rs).
+fn panic_hook(panic_info: &PanicInfo<'_>) {
+    let mut stdout = stdout();
+
+    let msg = match panic_info.payload().downcast_ref::<&'static str>() {
+        Some(s) => *s,
+        None => match panic_info.payload().downcast_ref::<String>() {
+            Some(s) => &s[..],
+            None => "Box<Any>",
+        },
+    };
+
+    let backtrace = format!("{:?}", backtrace::Backtrace::new());
+
+    if let Err(e) = restore_terminal() {
+        eprintln!("unable to restore terminal:\n{e}");
+    }
+
+    // Print stack trace. Must be done after!
+    if let Some(panic_info) = panic_info.location() {
+        let _ = execute!(
+            stdout,
+            crossterm::style::Print(format!(
+                "application panic: '{msg}', {panic_info}\n\r{backtrace}",
+            )),
+        );
+    }
 }
