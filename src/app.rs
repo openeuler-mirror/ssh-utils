@@ -12,6 +12,7 @@ use ratatui::layout::Layout;
 use ratatui::layout::Rect;
 use ratatui::style::Modifier;
 use ratatui::style::Style;
+use ratatui::style::Stylize;
 use ratatui::text::Text;
 use ratatui::widgets::HighlightSpacing;
 use ratatui::widgets::List;
@@ -79,17 +80,24 @@ impl Widget for &mut App {
     fn render(self, area: Rect, buf: &mut Buffer){
         let vertical = Layout::vertical([
             Constraint::Length(1),
-            Constraint::Min(0)
+            Constraint::Min(0),
+            Constraint::Length(1)
         ]);
-        let [head_area, body_area] = vertical.areas(area);
+        let [head_area, body_area, foot_area] = vertical.areas(area);
         self.render_header(head_area, buf);
         self.render_servers(body_area, buf);
+        self.render_footer(foot_area, buf);
     }
 }
 
 impl App {
     fn render_header(&self, area: Rect, buf: &mut Buffer) {
         let text = Text::styled(format!("  {:<10} {:<15} {:<20}", "user", "ip", "name"), Style::default().add_modifier(Modifier::BOLD));
+        Widget::render(text, area, buf);
+    }
+
+    fn render_footer(&self, area: Rect, buf: &mut Buffer) {
+        let text = Text::from("  Create (C), Delete (D)").dim();
         Widget::render(text, area, buf);
     }
 
