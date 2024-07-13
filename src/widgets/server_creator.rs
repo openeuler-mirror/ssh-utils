@@ -1,13 +1,6 @@
 use std::ops::{Add, Sub};
-
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
-use ratatui::{backend::Backend, 
-    buffer::Buffer,
-    layout::{Constraint, Layout, Rect},
-    style::{Style, Stylize},
-    text::{Line, Span, Text},
-    widgets::{Paragraph, Widget},
-    Terminal};
+use ratatui::{backend::Backend, buffer::Buffer, layout::{Constraint, Layout, Rect}, style::{Style, Stylize}, text::{Line, Span, Text}, widgets::{Paragraph, Widget}, Frame, Terminal};
 use anyhow::Result;
 
 /// current selected item in form
@@ -87,34 +80,30 @@ pub struct ServerCreator {
     /// Position of cursor in the editor area.
     character_index: usize,
     /// current selected item
-    current_select: CurrentSelect,
-    /// form position
-    /// used to set cursor
-    form_position: (u16, u16)
+    current_select: CurrentSelect
 }
 
-impl Widget for &mut ServerCreator {
-    fn render(self, area: Rect, buf: &mut Buffer) {
-        let vertical = Layout::vertical([
-            Constraint::Length(1),
-            Constraint::Min(0),
-            Constraint::Length(1)
-        ]);
-        let [head_area, body_area, foot_area] = vertical.areas(area);
-        self.form_position = (body_area.x, body_area.y);
-        self.render_header(head_area, buf);
-        self.render_form(body_area, buf);
-        self.render_footer(foot_area, buf);
-    }
-}
+// impl Widget for &mut ServerCreator {
+//     fn render(self, area: Rect, buf: &mut Buffer) {
+//         let vertical = Layout::vertical([
+//             Constraint::Length(1),
+//             Constraint::Min(0),
+//             Constraint::Length(1)
+//         ]);
+//         let [head_area, body_area, foot_area] = vertical.areas(area);
+//         self.form_position = (body_area.x, body_area.y);
+//         self.render_header(head_area, buf);
+//         self.render_form(body_area, buf);
+//         self.render_footer(foot_area, buf);
+//     }
+// }
 
 impl ServerCreator {
     pub fn new() -> Self {
         Self {
             input: vec![String::new(), String::new(), String::new(), String::new()],
             character_index: 0,
-            current_select: CurrentSelect::User,
-            form_position: (0,3)
+            current_select: CurrentSelect::User
 
         }
     }
@@ -224,13 +213,7 @@ impl ServerCreator {
 impl ServerCreator {
     fn draw(&mut self, terminal: &mut Terminal<impl Backend>) -> Result<()> {
         terminal.draw(|f| {
-            let character_index = self.character_index as u16;
-            let form_position = self.form_position;
-            let cursor_x = form_position.0 + character_index + 9;
-            let cursor_y = form_position.1 + self.current_select as u16;
-
-            f.render_widget(self, f.size());
-            f.set_cursor(cursor_x,cursor_y);
+            ui(f, &self)
         })?;
         Ok(())
     }
@@ -276,6 +259,26 @@ impl ServerCreator {
             }
         }
     }
+}
+
+fn ui(f: &mut Frame, server_creator: &ServerCreator) {
+    let vertical = Layout::vertical([
+            Constraint::Length(1),
+            Constraint::Min(0),
+            Constraint::Length(1)
+        ]);
+    let [head_area, body_area, foot_area] = vertical.areas(f.size());
+    server_creator.render_header(head_area, f.buffer_mut());
+    server_creator.render_form(body_area, f.buffer_mut());
+    server_creator.render_footer(foot_area, f.buffer_mut());
+    
+    let character_index = server_creator.character_index as u16;
+    //due to input character index start at 9
+    //eg: "password:"
+    //so here add 9
+    let cursor_x = body_area.x + character_index + 9;
+    let cursor_y = body_area.y + server_creator.current_select as u16;
+    f.set_cursor(cursor_x,cursor_y);
 }
 
 #[test]
