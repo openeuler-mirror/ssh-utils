@@ -22,6 +22,8 @@ use ratatui::widgets::StatefulWidget;
 use ratatui::widgets::Widget;
 use ratatui::Terminal;
 
+use crate::widgets::server_creator::ServerCreator;
+
 struct ServerItem {
     name: String,
     address: String,
@@ -97,7 +99,7 @@ impl App {
     }
 
     fn render_footer(&self, area: Rect, buf: &mut Buffer) {
-        let text = Text::from("  Create (C), Delete (D)").dim();
+        let text = Text::from("  Add (A), Delete (D), Quit (ESC)").dim();
         Widget::render(text, area, buf);
     }
 
@@ -163,9 +165,15 @@ impl App {
                         Char('j') | Down => self.server_list.next(),
                         Char('k') | Up => self.server_list.previous(),
                         Char('c') => {
+                            // Set this hotkey because of man's habit
                             if key.modifiers == KeyModifiers::CONTROL {
                                 return Ok(())
                             }
+                        },
+                        Char('a') => {
+                            //添加 server
+                            let mut server_creator = ServerCreator::new();
+                            server_creator.run(&mut terminal)?;
                         }
                         _ => {}
                     }

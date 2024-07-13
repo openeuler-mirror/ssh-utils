@@ -1,4 +1,5 @@
 mod app;
+mod widgets;
 
 use std::{io::{self, Stdout}, panic::{self, PanicInfo}};
 use app::App;
