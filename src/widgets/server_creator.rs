@@ -252,7 +252,7 @@ impl ServerCreator {
                             self.move_pre_select_item();
                             self.moveto_current_cursor();
                         }
-                        KeyCode::Down | KeyCode::Enter => {
+                        KeyCode::Down | KeyCode::Enter | KeyCode::Tab => {
                             self.move_next_select_item();
                             self.moveto_current_cursor();
                         }
