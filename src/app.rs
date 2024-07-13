@@ -32,16 +32,14 @@ struct ServerItem {
 
 struct ServerList {
     state: ListState,
-    items: Vec<ServerItem>,
-    last_selected: Option<usize>,
+    items: Vec<ServerItem>
 }
 
 impl ServerList {
     fn with_items(items: Vec<ServerItem>) -> ServerList {
         ServerList {
             state: ListState::default(),
-            items,
-            last_selected: None,
+            items
         }
     }
 
