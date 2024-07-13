@@ -122,7 +122,10 @@ impl ServerCreator {
         // highlight currently selected item
         let mut user: Vec<Span> =     vec!["    user:".into(), self.input[CurrentSelect::User as usize].clone().into()];
         let mut ip: Vec<Span> =       vec!["      ip:".into(), self.input[CurrentSelect::Ip as usize].clone().into()];
-        let mut password: Vec<Span> = vec!["password:".into(), self.input[CurrentSelect::Password as usize].clone().into()];
+        // we use * to replace the password
+        let password_length = self.input[CurrentSelect::Password as usize].len();
+        let masked_password: String = "*".repeat(password_length);
+        let mut password: Vec<Span> = vec!["password:".into(), masked_password.into()];
         let mut name: Vec<Span> =     vec!["    name:".into(), self.input[CurrentSelect::Name as usize].clone().into()];
         
         match self.current_select {
