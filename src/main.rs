@@ -82,7 +82,7 @@ fn panic_hook(panic_info: &PanicInfo<'_>) {
         let _ = execute!(
             stdout,
             crossterm::style::Print(format!(
-                "application panic: '{msg}', {panic_info}\n\r{backtrace}",
+                "application panic: '{msg}', {panic_info}\n{backtrace}",
             )),
         );
     }
