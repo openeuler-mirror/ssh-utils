@@ -1,8 +1,10 @@
 mod app;
 mod widgets;
+mod config;
 
 use std::{io::{self, Stdout}, panic::{self, PanicInfo}};
 use app::App;
+use config::app_config;
 use crossterm::{cursor::{RestorePosition, SavePosition}, execute, terminal::{
 		disable_raw_mode, enable_raw_mode, Clear, ClearType
 	}};
@@ -13,13 +15,13 @@ use std::io::stdout;
 fn main() -> Result<()> {
     // Setup panic hook
     panic::set_hook(Box::new(panic_hook));
+    app_config::ensure_config_exists()?;
+    let config = app_config::read_config()?;
+    let app = App::new(config)?;
     let mut terminal = create_terminal()?;
-
     setup_terminal(&mut terminal)?;
-    let app = App::new()?;
     run_app(app, &mut terminal)?;
     restore_terminal()?;
-
     Ok(())
 }
 

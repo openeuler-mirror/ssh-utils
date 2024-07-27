@@ -22,6 +22,7 @@ use ratatui::widgets::StatefulWidget;
 use ratatui::widgets::Widget;
 use ratatui::Terminal;
 
+use crate::config::app_config::Config;
 use crate::widgets::server_creator::ServerCreator;
 
 struct ServerItem {
@@ -120,31 +121,18 @@ impl App {
 }
 
 impl App {
-    pub fn new() -> Result<Self> {
-        if cfg!(debug_assertions) {
-            let app = Self {
-            server_list: ServerList::with_items(vec![
-                ServerItem {
-                    name: "Aliyun ECS".to_string(),
-                    address: "exmaple.com".to_string(),
-                    username: "admin".to_string()
-                },
-                ServerItem {
-                    name: "AWS lightsail".to_string(),
-                    address: "127.0.0.1".to_string(),
-                    username: "root".to_string()
-                },
-                ServerItem {
-                    name: "My Homelab".to_string(),
-                    address: "192.0.0.1".to_string(),
-                    username: "admin".to_string()
-                }
-            ])
+    pub fn new(config: Config) -> Result<Self> {
+        let server_items: Vec<ServerItem> = config.servers.into_iter().map(|server| {
+            ServerItem {
+                name: server.name,
+                address: server.ip,
+                username: server.user,
+            }
+        }).collect();
+        let app = Self {
+            server_list: ServerList::with_items(server_items)
         };
         Ok(app)
-        } else {
-            todo!()
-        }
     }
 
 
