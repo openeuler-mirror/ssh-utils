@@ -1,9 +1,12 @@
 use anyhow::Result;
-use anyhow::{Context, Ok};
+use anyhow::Context;
 use serde::{Deserialize, Serialize};
-use std::{path::PathBuf};
-
+use std::path::PathBuf;
+use hmac::{Hmac, Mac};
+use sha2::Sha256;
 use crate::config::crypto::*;
+
+type HmacSha256 = Hmac<Sha256>;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct Server {
@@ -19,7 +22,7 @@ pub struct Vault {
 /**
     check if config file and it's directory exists
 */
-pub fn check_if_password_bin_exists() -> Result<bool> {
+pub fn check_if_vault_bin_exists() -> Result<bool> {
     let mut config_dir: PathBuf = if cfg!(debug_assertions) {
         ".".into() // curent running dir
     } else {
@@ -56,27 +59,42 @@ pub fn encrypt_vault(vault: &Vault, password: &str) -> Result<Vec<u8>> {
     let data = unencrypt_data.as_bytes();
     let encrypted_data = aes_encrypt(&encryption_key, &iv, data)?;
 
-    // Concatenate the IV and encrypted data and return the result.
-    let mut result = Vec::with_capacity(iv.len() + encrypted_data.len());
+    // Step 5: Compute HMAC for the IV and encrypted data
+    let mut mac = HmacSha256::new_from_slice(&encryption_key)
+        .context("Failed to create HMAC instance")?;
+    mac.update(&iv);
+    mac.update(&encrypted_data);
+    let hmac = mac.finalize().into_bytes();
+
+    // Concatenate the IV, encrypted data, and HMAC and return the result.
+    let mut result = Vec::with_capacity(iv.len() + encrypted_data.len() + hmac.len());
     result.extend_from_slice(&iv);
     result.extend_from_slice(&encrypted_data);
+    result.extend_from_slice(&hmac);
 
     Ok(result)
 }
-
 
 /**
     decrypt vault
 */
 pub fn decrypt_vault(vault: &[u8], password: &str) -> Result<Vault> {
-    // Extract the IV and encrypted data.
-    let (iv, encrypted_data) = vault.split_at(16);
+    // Extract the IV, encrypted data, and HMAC.
+    let (iv, rest) = vault.split_at(16);
+    let (encrypted_data, hmac) = rest.split_at(rest.len() - 32);
 
     // Derive the salt from the password.
     let salt = derive_sha256_digest(password);
 
     // Derive the encryption key from the password and salt using Argon2.
     let encryption_key = derive_key_from_password(password, &salt)?;
+
+    // Verify HMAC
+    let mut mac = HmacSha256::new_from_slice(&encryption_key)
+        .context("Failed to create HMAC instance")?;
+    mac.update(iv);
+    mac.update(encrypted_data);
+    mac.verify_slice(hmac).context("HMAC verification failed")?;
 
     // Decrypt the data.
     let decrypted_data = aes_decrypt(&encryption_key, iv, encrypted_data)?;
@@ -106,7 +124,18 @@ password = "secret_password2"
     "#;
     let origin_vault: Vault = toml::from_str(pass_data)?;
     let encrypt_data = encrypt_vault(&origin_vault,"123")?;
-    let decrypt_vault = decrypt_vault(&encrypt_data, "123")?;
+    let decrypt_vault = match decrypt_vault(&encrypt_data, "123") {
+        Err(e) => {
+            if let Some(_) = e.downcast_ref::<hmac::digest::MacError>() {
+                println!("wrong password");
+                return Err(e);
+            } else {
+                println!("An unexpected error occurred: {}", e);
+                return Err(e);
+            }
+        },
+        Ok(o) => o
+    };
     assert_eq!(origin_vault, decrypt_vault);
     Ok(())
 }
