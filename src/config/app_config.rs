@@ -5,6 +5,7 @@ use anyhow::Result;
 
 #[derive(Deserialize, Debug)]
 pub struct Server {
+    pub id: String,
     pub name: String,
     pub ip: String,
     pub user: String,
@@ -17,6 +18,7 @@ pub struct Config {
 
 /**
     check if config file and it's directory exists
+    if not exists, create them
 */
 pub fn ensure_config_exists() -> Result<()> {
     let mut config_dir: PathBuf = if cfg!(debug_assertions) {
