@@ -1,27 +1,81 @@
 mod app;
 mod widgets;
 mod config;
+mod helper;
 
-use std::{io::{self, Stdout}, panic::{self, PanicInfo}};
+use std::{fs::File, io::{self, Read, Stdout}, panic::{self, PanicInfo}};
 use app::App;
-use config::app_config;
+use config::{app_config, app_vault::{check_if_vault_bin_exists, decrypt_vault}, crypto::derive_key_from_password};
 use crossterm::{cursor::{RestorePosition, SavePosition}, execute, terminal::{
 		disable_raw_mode, enable_raw_mode, Clear, ClearType
 	}};
+use helper::{get_file_path, ENCRYPTED_FILE};
 use ratatui::{backend::CrosstermBackend, Terminal, TerminalOptions, Viewport};
 use anyhow::{Context, Result};
+use zeroize::Zeroize;
 use std::io::stdout;
+use rpassword::read_password;
 
 fn main() -> Result<()> {
     // Setup panic hook
     panic::set_hook(Box::new(panic_hook));
     app_config::ensure_config_exists()?;
+    let mut encryption_key:Vec<u8> = Vec::with_capacity(32);
+    init_vault(&mut encryption_key)?;
     let config = app_config::read_config()?;
     let app = App::new(config)?;
     let mut terminal = create_terminal()?;
     setup_terminal(&mut terminal)?;
     run_app(app, &mut terminal)?;
     restore_terminal()?;
+    Ok(())
+}
+
+fn prompt_passphrase(prompt: &str) -> Result<String, anyhow::Error> {
+    print!("{}", prompt);
+    io::Write::flush(&mut io::stdout())?;
+
+    let passphrase = read_password().unwrap_or_else(|err| {
+        eprintln!("Error reading password: {}", err);
+        std::process::exit(1);
+    });
+
+    Ok(passphrase)
+}
+
+fn init_vault(encryption_key: &mut Vec<u8>) -> Result<(), anyhow::Error> {
+    let mut passphrase = prompt_passphrase("Enter passphrase (empty for no passphrase): ")?;
+    let mut confirm_passphrase = prompt_passphrase("Enter the same passphrase again: ")?;
+
+    if passphrase == confirm_passphrase {
+        if check_if_vault_bin_exists()? {
+            let mut vault_file = File::open(get_file_path(ENCRYPTED_FILE)?)?;
+            let mut vault_buf: Vec<u8> = Vec::new();
+            vault_file.read_to_end(&mut vault_buf)?;
+            let try_encryption_key: [u8; 32] = derive_key_from_password(passphrase.as_str())?;
+            // hmac challenge.
+            match decrypt_vault(&vault_buf, &try_encryption_key) {
+                Ok(_) => {
+                    encryption_key.extend_from_slice(&try_encryption_key);
+                },
+                Err(e) => {
+                    if let Some(_) = e.downcast_ref::<hmac::digest::MacError>() {
+                        println!("Incorrect passphrase. Please try again.");
+                        return Err(e);
+                    } else {
+                        return Err(anyhow::anyhow!("Failed to decrypt vault: {:?}", e));
+                    }
+                }
+            }
+        }
+    } else {
+        println!("Passphrases do not match. Please ensure both entries are identical.");
+        std::process::exit(1);
+    }
+    // due to the drop!() is not really clear the Passphrases' data in memory.
+    // so we need zeroize to clear passphrase in memory.
+    passphrase.zeroize();
+    confirm_passphrase.zeroize();
     Ok(())
 }
 
