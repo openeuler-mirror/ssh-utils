@@ -11,11 +11,18 @@ use crate::helper::get_file_path;
 use crate::helper::ENCRYPTED_FILE;
 
 type HmacSha256 = Hmac<Sha256>;
+pub type EncryptionKey = Vec<u8>;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct Server {
     pub id: String,
     pub password: String,
+}
+
+impl Server {
+    pub fn new(id: String, password: String) -> Self {
+        Self { id, password }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq, Eq)]

@@ -23,24 +23,27 @@ use ratatui::widgets::Widget;
 use ratatui::Terminal;
 
 use crate::config::app_config::Config;
+use crate::config::app_vault::EncryptionKey;
+use crate::config::app_vault::Vault;
 use crate::widgets::server_creator::ServerCreator;
 
 struct ServerItem {
     name: String,
     address: String,
-    username: String
+    username: String,
+    id: String,
 }
 
 struct ServerList {
     state: ListState,
-    items: Vec<ServerItem>
+    items: Vec<ServerItem>,
 }
 
 impl ServerList {
     fn with_items(items: Vec<ServerItem>) -> ServerList {
         ServerList {
             state: ListState::default(),
-            items
+            items,
         }
     }
 
@@ -73,16 +76,19 @@ impl ServerList {
     }
 }
 
-pub struct App {
-    server_list: ServerList
+pub struct App<'a> {
+    server_list: ServerList,
+    vault: &'a mut Vault,
+    config: &'a mut Config,
+    encryption_key: EncryptionKey,
 }
 
-impl Widget for &mut App {
-    fn render(self, area: Rect, buf: &mut Buffer){
+impl<'a> Widget for &mut App<'a> {
+    fn render(self, area: Rect, buf: &mut Buffer) {
         let vertical = Layout::vertical([
             Constraint::Length(1),
             Constraint::Min(0),
-            Constraint::Length(1)
+            Constraint::Length(1),
         ]);
         let [head_area, body_area, foot_area] = vertical.areas(area);
         self.render_header(head_area, buf);
@@ -91,9 +97,12 @@ impl Widget for &mut App {
     }
 }
 
-impl App {
+impl<'a> App<'a> {
     fn render_header(&self, area: Rect, buf: &mut Buffer) {
-        let text = Text::styled(format!("  {:<10} {:<15} {:<20}", "user", "ip", "name"), Style::default().add_modifier(Modifier::BOLD));
+        let text = Text::styled(
+            format!("  {:<10} {:<15} {:<20}", "user", "ip", "name"),
+            Style::default().add_modifier(Modifier::BOLD),
+        );
         Widget::render(text, area, buf);
     }
 
@@ -103,46 +112,64 @@ impl App {
     }
 
     fn render_servers(&mut self, area: Rect, buf: &mut Buffer) {
-        let items: Vec<ListItem> = self.server_list.items.iter().map(|item| {
-            ListItem::new(format!("{:<10} {:<15} {:<20}", item.username, item.address, item.name))
-        }).collect();
-        
+        let items: Vec<ListItem> = self
+            .server_list
+            .items
+            .iter()
+            .map(|item| {
+                ListItem::new(format!(
+                    "{:<10} {:<15} {:<20}",
+                    item.username, item.address, item.name
+                ))
+            })
+            .collect();
+
         let items = List::new(items)
             .highlight_style(
                 Style::default()
                     .add_modifier(Modifier::BOLD)
-                    .add_modifier(Modifier::REVERSED)
+                    .add_modifier(Modifier::REVERSED),
             )
             .highlight_symbol("> ")
             .highlight_spacing(HighlightSpacing::Always);
-        
+
         StatefulWidget::render(&items, area, buf, &mut self.server_list.state);
     }
 }
 
-impl App {
-    pub fn new(config: Config) -> Result<Self> {
-        let server_items: Vec<ServerItem> = config.servers.into_iter().map(|server| {
-            ServerItem {
+impl<'a> App<'a> {
+    pub fn new(
+        config: &'a mut Config,
+        vault: &'a mut Vault,
+        encryption_key: EncryptionKey,
+    ) -> Result<Self> {
+        let server_items: Vec<ServerItem> = config
+            .servers
+            .clone()
+            .into_iter()
+            .map(|server| ServerItem {
+                id: server.id,
                 name: server.name,
                 address: server.ip,
                 username: server.user,
-            }
-        }).collect();
+            })
+            .collect();
         let app = Self {
-            server_list: ServerList::with_items(server_items)
+            server_list: ServerList::with_items(server_items),
+            vault: vault,
+            config: config,
+            encryption_key,
         };
         Ok(app)
     }
-
 
     fn draw(&mut self, terminal: &mut Terminal<impl Backend>) -> Result<()> {
         terminal.draw(|f| f.render_widget(self, f.size()))?;
         Ok(())
     }
-    
+
     pub fn run(&mut self, mut terminal: &mut Terminal<impl Backend>) -> Result<()> {
-        loop{
+        loop {
             self.draw(&mut terminal)?;
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
@@ -153,13 +180,31 @@ impl App {
                         Char('c') => {
                             // Set this hotkey because of man's habit
                             if key.modifiers == KeyModifiers::CONTROL {
-                                return Ok(())
+                                return Ok(());
                             }
-                        },
+                        }
                         Char('a') => {
-                            //添加 server
-                            let mut server_creator = ServerCreator::new();
-                            server_creator.run(&mut terminal)?;
+                            // Add server
+                            let mut server_creator =
+                                ServerCreator::new(self.vault, self.config, &self.encryption_key);
+
+                            if server_creator.run(&mut terminal)? {
+                                // add a new server
+                                // Refresh self.server_list
+                                let server_items: Vec<ServerItem> = self
+                                    .config
+                                    .servers
+                                    .clone()
+                                    .into_iter()
+                                    .map(|server| ServerItem {
+                                        id: server.id,
+                                        name: server.name,
+                                        address: server.ip,
+                                        username: server.user,
+                                    })
+                                    .collect();
+                                self.server_list = ServerList::with_items(server_items);
+                            }
                         }
                         _ => {}
                     }

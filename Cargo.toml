@@ -19,3 +19,5 @@ rust-argon2 = "2.1.0"
 rpassword = "7.3.1"
 hmac = "0.12.1"
 zeroize = "1.8.1"
+hex = "0.4.3"
+uuid = { version = "1.0", features = ["v4"] }

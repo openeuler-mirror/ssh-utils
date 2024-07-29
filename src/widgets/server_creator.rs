@@ -1,7 +1,22 @@
-use std::ops::{Add, Sub};
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
-use ratatui::{backend::Backend, buffer::Buffer, layout::{Constraint, Layout, Rect}, style::{Style, Stylize}, text::{Line, Span, Text}, widgets::{Paragraph, Widget}, Frame, Terminal};
 use anyhow::Result;
+use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use ratatui::{
+    backend::Backend,
+    buffer::Buffer,
+    layout::{Constraint, Layout, Rect},
+    style::{Style, Stylize},
+    text::{Line, Span, Text},
+    widgets::{Paragraph, Widget},
+    Frame, Terminal,
+};
+use std::ops::{Add, Sub};
+
+use crate::{
+    config::{
+        app_config::{Config, Server},
+        app_vault::{self, encrypt_password, EncryptionKey, Vault},
+    }, helper::convert_to_array,
+};
 
 /// current selected item in form
 #[derive(Copy, Clone)]
@@ -74,13 +89,17 @@ impl Sub<isize> for CurrentSelect {
 }
 
 /// App holds the state of the application
-pub struct ServerCreator {
+pub struct ServerCreator<'a> {
     /// Current values of the input boxes
     input: Vec<String>,
     /// Position of cursor in the editor area.
     character_index: usize,
     /// current selected item
-    current_select: CurrentSelect
+    current_select: CurrentSelect,
+    /// vault
+    vault: &'a mut Vault,
+    config: &'a mut Config,
+    encryption_key: &'a EncryptionKey,
 }
 
 // impl Widget for &mut ServerCreator {
@@ -98,13 +117,15 @@ pub struct ServerCreator {
 //     }
 // }
 
-impl ServerCreator {
-    pub fn new() -> Self {
+impl<'a> ServerCreator<'a> {
+    pub fn new(vault: &'a mut Vault, config: &'a mut Config, encryption_key: &'a EncryptionKey) -> Self {
         Self {
             input: vec![String::new(), String::new(), String::new(), String::new()],
             character_index: 0,
-            current_select: CurrentSelect::User
-
+            current_select: CurrentSelect::User,
+            vault,
+            config,
+            encryption_key,
         }
     }
 
@@ -120,21 +141,30 @@ impl ServerCreator {
 
     fn render_form(&self, area: Rect, buf: &mut Buffer) {
         // highlight currently selected item
-        let mut user: Vec<Span> =     vec!["    user:".into(), self.input[CurrentSelect::User as usize].clone().into()];
-        let mut ip: Vec<Span> =       vec!["      ip:".into(), self.input[CurrentSelect::Ip as usize].clone().into()];
+        let mut user: Vec<Span> = vec![
+            "    user:".into(),
+            self.input[CurrentSelect::User as usize].clone().into(),
+        ];
+        let mut ip: Vec<Span> = vec![
+            "      ip:".into(),
+            self.input[CurrentSelect::Ip as usize].clone().into(),
+        ];
         // we use * to replace the password
         let password_length = self.input[CurrentSelect::Password as usize].len();
         let masked_password: String = "*".repeat(password_length);
         let mut password: Vec<Span> = vec!["password:".into(), masked_password.into()];
-        let mut name: Vec<Span> =     vec!["    name:".into(), self.input[CurrentSelect::Name as usize].clone().into()];
-        
+        let mut name: Vec<Span> = vec![
+            "    name:".into(),
+            self.input[CurrentSelect::Name as usize].clone().into(),
+        ];
+
         match self.current_select {
             CurrentSelect::User => user[0] = Span::styled("    user:", Style::new().bold()),
             CurrentSelect::Ip => ip[0] = Span::styled("      ip:", Style::new().bold()),
             CurrentSelect::Password => password[0] = Span::styled("password:", Style::new().bold()),
             CurrentSelect::Name => name[0] = Span::styled("    name:", Style::new().bold()),
         }
-        
+
         let user_line = Line::from(user);
         let ip_line = Line::from(ip);
         let password_line = Line::from(password);
@@ -188,13 +218,18 @@ impl ServerCreator {
             let from_left_to_current_index = current_index - 1;
 
             // Getting all characters before the selected character.
-            let before_char_to_delete = self.input[self.current_select as usize].chars().take(from_left_to_current_index);
+            let before_char_to_delete = self.input[self.current_select as usize]
+                .chars()
+                .take(from_left_to_current_index);
             // Getting all characters after selected character.
-            let after_char_to_delete = self.input[self.current_select as usize].chars().skip(current_index);
+            let after_char_to_delete = self.input[self.current_select as usize]
+                .chars()
+                .skip(current_index);
 
             // Put all characters together except the selected one.
             // By leaving the selected one out, it is forgotten and therefore deleted.
-            self.input[self.current_select as usize] = before_char_to_delete.chain(after_char_to_delete).collect();
+            self.input[self.current_select as usize] =
+                before_char_to_delete.chain(after_char_to_delete).collect();
             self.move_cursor_left();
         }
     }
@@ -212,17 +247,19 @@ impl ServerCreator {
     }
 }
 
-
-impl ServerCreator {
+impl<'a> ServerCreator<'a> {
     fn draw(&mut self, terminal: &mut Terminal<impl Backend>) -> Result<()> {
-        terminal.draw(|f| {
-            ui(f, &self)
-        })?;
+        terminal.draw(|f| ui(f, &self))?;
         Ok(())
     }
 
-    pub fn run(&mut self, mut terminal: &mut Terminal<impl Backend>) -> Result<()> {
-        loop{
+    /**
+     * Run and get a result
+     * true -> add a new server
+     * false -> cancelled
+     */
+    pub fn run(&mut self, mut terminal: &mut Terminal<impl Backend>) -> Result<bool> {
+        loop {
             self.draw(&mut terminal)?;
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
@@ -231,7 +268,27 @@ impl ServerCreator {
                             // Set this hotkey because of man's habit
                             if to_insert == 'c' {
                                 if key.modifiers == event::KeyModifiers::CONTROL {
-                                    return Ok(())
+                                    return Ok(false);
+                                }
+                            }
+                            // Save current server's config
+                            if to_insert == 's' {
+                                if key.modifiers == event::KeyModifiers::CONTROL {
+                                    let encryption_key = convert_to_array(&self.encryption_key)?;
+                                    let config_server = Server::new(
+                                        self.input[CurrentSelect::Name as usize].clone(),
+                                        self.input[CurrentSelect::Ip as usize].clone(),
+                                        self.input[CurrentSelect::User as usize].clone(),
+                                    );
+                                    let passwd = encrypt_password(
+                                        &config_server.id,
+                                        self.input[CurrentSelect::Password as usize].clone().as_str(),
+                                        &encryption_key,
+                                    )?;
+                                    self.config.add_server(config_server.clone())?;
+                                    let vault_server = app_vault::Server::new(config_server.id.clone(),passwd);
+                                    self.vault.add_server(vault_server, &encryption_key)?;
+                                    return Ok(true);
                                 }
                             }
                             self.enter_char(to_insert);
@@ -246,7 +303,7 @@ impl ServerCreator {
                             self.move_cursor_right();
                         }
                         KeyCode::Esc => {
-                            return Ok(());
+                            return Ok(false);
                         }
                         KeyCode::Up => {
                             self.move_pre_select_item();
@@ -266,22 +323,22 @@ impl ServerCreator {
 
 fn ui(f: &mut Frame, server_creator: &ServerCreator) {
     let vertical = Layout::vertical([
-            Constraint::Length(1),
-            Constraint::Min(0),
-            Constraint::Length(1)
-        ]);
+        Constraint::Length(1),
+        Constraint::Min(0),
+        Constraint::Length(1),
+    ]);
     let [head_area, body_area, foot_area] = vertical.areas(f.size());
     server_creator.render_header(head_area, f.buffer_mut());
     server_creator.render_form(body_area, f.buffer_mut());
     server_creator.render_footer(foot_area, f.buffer_mut());
-    
+
     let character_index = server_creator.character_index as u16;
     //due to input character index start at 9
     //eg: "password:"
     //so here add 9
     let cursor_x = body_area.x + character_index + 9;
     let cursor_y = body_area.y + server_creator.current_select as u16;
-    f.set_cursor(cursor_x,cursor_y);
+    f.set_cursor(cursor_x, cursor_y);
 }
 
 #[test]
@@ -291,7 +348,31 @@ fn run_widget() -> Result<()> {
     crossterm::execute!(std::io::stdout(), crossterm::terminal::EnterAlternateScreen)?;
     let backend = ratatui::backend::CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
-    let mut app = ServerCreator::new();
+
+    // get vault start
+    let mut encryption_key: EncryptionKey = Vec::with_capacity(32);
+    let mut vault_file = std::fs::File::open(crate::helper::get_file_path(crate::helper::ENCRYPTED_FILE)?)?;
+    let mut vault_buf: EncryptionKey = Vec::new();
+    std::io::Read::read_to_end(&mut vault_file, &mut vault_buf)?;
+    let try_encryption_key: [u8; 32] = crate::config::crypto::derive_key_from_password("123")?;
+    // hmac challenge.
+    let mut vault = match crate::config::app_vault::decrypt_vault(&vault_buf, &try_encryption_key) {
+        Ok(o) => {
+            encryption_key.extend_from_slice(&try_encryption_key);
+            o
+        }
+        Err(e) => {
+            if let Some(_) = e.downcast_ref::<hmac::digest::MacError>() {
+                println!("Incorrect passphrase. Please try again.");
+                return Err(e);
+            } else {
+                return Err(anyhow::anyhow!("Failed to decrypt vault: {:?}", e));
+            }
+        }
+    };
+    // get vault end
+    let mut config = crate::config::app_config::read_config()?;
+    let mut app = ServerCreator::new(&mut vault, &mut config, &encryption_key);
 
     app.run(&mut terminal)?;
     crossterm::execute!(std::io::stdout(), crossterm::terminal::LeaveAlternateScreen)?;

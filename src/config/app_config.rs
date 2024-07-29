@@ -1,15 +1,27 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 use std::{fs, path::PathBuf};
 
 use crate::helper::{get_file_path, CONFIG_FILE};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Server {
     pub id: String,
     pub name: String,
     pub ip: String,
     pub user: String,
+}
+
+impl Server {
+    pub fn new(name: String, ip: String, user: String) -> Self {
+        Self {
+            id: Uuid::new_v4().to_string(),
+            name,
+            ip,
+            user,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Default)]

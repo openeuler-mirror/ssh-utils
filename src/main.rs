@@ -7,7 +7,7 @@ use anyhow::{Context, Result};
 use app::App;
 use config::{
     app_config,
-    app_vault::{check_if_vault_bin_exists, decrypt_vault, Vault},
+    app_vault::{check_if_vault_bin_exists, decrypt_vault, EncryptionKey, Vault},
     crypto::derive_key_from_password,
 };
 use crossterm::{
@@ -29,10 +29,10 @@ fn main() -> Result<()> {
     // Setup panic hook
     panic::set_hook(Box::new(panic_hook));
     app_config::ensure_config_exists()?;
-    let mut encryption_key: Vec<u8> = Vec::with_capacity(32);
-    let vault = init_vault(&mut encryption_key)?;
-    let config = app_config::read_config()?;
-    let app = App::new(config)?;
+    let mut encryption_key: EncryptionKey = Vec::with_capacity(32);
+    let mut vault = init_vault(&mut encryption_key)?;
+    let mut config = app_config::read_config()?;
+    let app = App::new(&mut config, &mut vault, encryption_key)?;
     let mut terminal = create_terminal()?;
     setup_terminal(&mut terminal)?;
     run_app(app, &mut terminal)?;
@@ -58,16 +58,16 @@ fn prompt_passphrase(prompt: &str) -> Result<String, anyhow::Error> {
     Ok(passphrase)
 }
 
-fn init_vault(encryption_key: &mut Vec<u8>) -> Result<Vault, anyhow::Error> {
+fn init_vault(encryption_key: &mut EncryptionKey) -> Result<Vault, anyhow::Error> {
     let mut passphrase = prompt_passphrase("Enter passphrase (empty for no passphrase): ")?;
     let mut confirm_passphrase = prompt_passphrase("Enter the same passphrase again: ")?;
 
     if passphrase == confirm_passphrase {
+        let try_encryption_key: [u8; 32] = derive_key_from_password(passphrase.as_str())?;
         if check_if_vault_bin_exists()? {
             let mut vault_file = File::open(get_file_path(ENCRYPTED_FILE)?)?;
             let mut vault_buf: Vec<u8> = Vec::new();
             vault_file.read_to_end(&mut vault_buf)?;
-            let try_encryption_key: [u8; 32] = derive_key_from_password(passphrase.as_str())?;
             // hmac challenge.
             let vault = match decrypt_vault(&vault_buf, &try_encryption_key) {
                 Ok(o) => {
@@ -89,6 +89,10 @@ fn init_vault(encryption_key: &mut Vec<u8>) -> Result<Vault, anyhow::Error> {
             confirm_passphrase.zeroize();
             return Ok(vault);
         } else {
+            // same above
+            passphrase.zeroize();
+            confirm_passphrase.zeroize();
+            encryption_key.extend_from_slice(&try_encryption_key);
             Ok(Vault::default())
         }
     } else {
