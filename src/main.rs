@@ -59,47 +59,60 @@ fn prompt_passphrase(prompt: &str) -> Result<String, anyhow::Error> {
 }
 
 fn init_vault(encryption_key: &mut EncryptionKey) -> Result<Vault, anyhow::Error> {
-    let mut passphrase = prompt_passphrase("Enter passphrase (empty for no passphrase): ")?;
-    let mut confirm_passphrase = prompt_passphrase("Enter the same passphrase again: ")?;
+    if check_if_vault_bin_exists()? {
+        for attempt in 1..=3 {
+            let prompt_message = if attempt == 1 {
+                "Enter passphrase: ".to_string()
+            } else {
+                format!("Enter passphrase (Attempt {} of 3): ", attempt)
+            };
 
-    if passphrase == confirm_passphrase {
-        let try_encryption_key: [u8; 32] = derive_key_from_password(passphrase.as_str())?;
-        if check_if_vault_bin_exists()? {
+            let mut passphrase = prompt_passphrase(&prompt_message)?;
+            let try_encryption_key: [u8; 32] = derive_key_from_password(passphrase.as_str())?;
             let mut vault_file = File::open(get_file_path(ENCRYPTED_FILE)?)?;
             let mut vault_buf: Vec<u8> = Vec::new();
             vault_file.read_to_end(&mut vault_buf)?;
+
             // hmac challenge.
-            let vault = match decrypt_vault(&vault_buf, &try_encryption_key) {
-                Ok(o) => {
+            match decrypt_vault(&vault_buf, &try_encryption_key) {
+                Ok(vault) => {
                     encryption_key.extend_from_slice(&try_encryption_key);
-                    o
+                    // due to the drop!() is not really clear the Passphrases' data in memory.
+                    // so we use zeroize to clear passphrase in memory.
+                    passphrase.zeroize();
+                    return Ok(vault);
                 }
                 Err(e) => {
+                    passphrase.zeroize();
                     if let Some(_) = e.downcast_ref::<hmac::digest::MacError>() {
                         println!("Incorrect passphrase. Please try again.");
-                        return Err(e);
+                        if attempt == 3 {
+                            println!("Maximum attempts reached. Exiting.");
+                            std::process::exit(1);
+                        }
                     } else {
                         return Err(anyhow::anyhow!("Failed to decrypt vault: {:?}", e));
                     }
                 }
-            };
-            // due to the drop!() is not really clear the Passphrases' data in memory.
-            // so we need zeroize to clear passphrase in memory.
-            passphrase.zeroize();
-            confirm_passphrase.zeroize();
-            return Ok(vault);
-        } else {
-            // same above
+            }
+        }
+    } else {
+        let mut passphrase = prompt_passphrase("Enter passphrase (empty for no passphrase): ")?;
+        let mut confirm_passphrase = prompt_passphrase("Enter the same passphrase again: ")?;
+        if passphrase == confirm_passphrase {
+            let try_encryption_key: [u8; 32] = derive_key_from_password(passphrase.as_str())?;
             passphrase.zeroize();
             confirm_passphrase.zeroize();
             encryption_key.extend_from_slice(&try_encryption_key);
-            Ok(Vault::default())
+            return Ok(Vault::default());
+        } else {
+            println!("Passphrases do not match. Please ensure both entries are identical.");
+            std::process::exit(1);
         }
-    } else {
-        println!("Passphrases do not match. Please ensure both entries are identical.");
-        std::process::exit(1);
     }
+    unreachable!()
 }
+
 
 fn run_app(
     mut app: App,
