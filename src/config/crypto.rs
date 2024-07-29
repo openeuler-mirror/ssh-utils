@@ -23,7 +23,7 @@ pub fn derive_key_from_password(password: &str) -> Result<[u8; 32]> {
     // Step 1: Derive a 16-byte SHA-256 digest from the password.
     let salt = derive_sha256_digest(password);
 
-    let config = Config::default();
+    let config = Config::owasp3();
     let key = argon2::hash_raw(password.as_bytes(), &salt, &config)
         .context("Failed to derive key using Argon2")?;
     let mut key_arr = [0u8; 32];
