@@ -104,6 +104,8 @@ fn init_vault(encryption_key: &mut EncryptionKey) -> Result<Vault, anyhow::Error
             passphrase.zeroize();
             confirm_passphrase.zeroize();
             encryption_key.extend_from_slice(&try_encryption_key);
+            let empty_vault = Vault::default();
+            empty_vault.save(&try_encryption_key)?;
             return Ok(Vault::default());
         } else {
             println!("Passphrases do not match. Please ensure both entries are identical.");

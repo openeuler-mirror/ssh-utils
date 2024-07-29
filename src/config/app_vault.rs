@@ -151,6 +151,12 @@ pub fn decrypt_vault(vault: &[u8], encryption_key: &[u8; 32]) -> Result<Vault> {
     // Convert the decrypted data to a string and parse it into a Vault object.
     let decrypted_str =
         String::from_utf8(decrypted_data).context("Failed to convert decrypted data to string")?;
+    
+    // If decrypted_str is blank, return a default Vault.
+    if decrypted_str.trim().is_empty() {
+        return Ok(Vault::default());
+    }
+
     let vault: Vault =
         toml::from_str(&decrypted_str).context("Failed to parse decrypted data as Vault")?;
 
