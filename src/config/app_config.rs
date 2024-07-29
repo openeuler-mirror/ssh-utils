@@ -1,9 +1,10 @@
-use anyhow::{Context, Ok};
-use serde::Deserialize;
+use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
-use anyhow::Result;
 
-#[derive(Deserialize, Debug)]
+use crate::helper::{get_file_path, CONFIG_FILE};
+
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Server {
     pub id: String,
     pub name: String,
@@ -11,9 +12,73 @@ pub struct Server {
     pub user: String,
 }
 
-#[derive(Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct Config {
     pub servers: Vec<Server>,
+}
+
+impl Config {
+    /**
+        Save the current config to the specified file.
+    */
+    pub fn save(&self) -> Result<()> {
+        let file_path = get_file_path(CONFIG_FILE)?;
+        let config_str = toml::to_string(self).context("Failed to serialize config to TOML.")?;
+        
+        // Ensure the directory exists
+        let path = PathBuf::from(&file_path);
+        if let Some(parent) = path.parent() {
+            if !parent.exists() {
+                fs::create_dir_all(parent).context(format!(
+                    "Failed to create config directory at {:?}",
+                    parent
+                ))?;
+            }
+        }
+
+        // Write the config to the file
+        fs::write(&file_path, config_str)
+            .context(format!("Failed to write config to file at {:?}", file_path))?;
+
+        Ok(())
+    }
+
+    /**
+        Modify a server's information and save the config.
+    */
+    pub fn modify_server(&mut self, id: &str, new_server: Server) -> Result<()> {
+        if let Some(server) = self.servers.iter_mut().find(|server| server.id == id) {
+            server.name = new_server.name.clone();
+            server.ip = new_server.ip.clone();
+            server.user = new_server.user.clone();
+            self.save()?;
+        } else {
+            return Err(anyhow::anyhow!("Server with id {} not found", id));
+        }
+        Ok(())
+    }
+
+    /**
+        Add a new server and save the config.
+    */
+    pub fn add_server(&mut self, new_server: Server) -> Result<()> {
+        self.servers.push(new_server);
+        self.save()?;
+        Ok(())
+    }
+
+    /**
+        Delete a server by id and save the config.
+    */
+    pub fn delete_server(&mut self, id: &str) -> Result<()> {
+        if let Some(pos) = self.servers.iter().position(|server| server.id == id) {
+            self.servers.remove(pos);
+            self.save()?;
+        } else {
+            return Err(anyhow::anyhow!("Server with id {} not found", id));
+        }
+        Ok(())
+    }
 }
 
 /**
