@@ -3,6 +3,8 @@ use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
 use std::fs;
+use std::fs::Permissions;
+use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
@@ -49,6 +51,12 @@ impl Vault {
         // Write the encrypted data to the file
         fs::write(&file_path, encrypt_data)
             .context(format!("Failed to write encrypted data to file at {:?}", file_path))?;
+        
+        // Set file permissions to 0600
+        // Only owner have permissions to read and write 
+        let permissions = Permissions::from_mode(0o600);
+        fs::set_permissions(&file_path, permissions)
+            .context(format!("Failed to set permissions for file at {:?}", file_path))?;
 
         Ok(())
     }
