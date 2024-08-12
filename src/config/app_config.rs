@@ -99,7 +99,7 @@ impl Config {
 */
 pub fn ensure_config_exists() -> Result<()> {
     let mut config_dir: PathBuf = if cfg!(debug_assertions) {
-        ".".into() // curent running dir
+        ".".into() // current running dir
     } else {
         dirs::home_dir().context("Unable to reach user's home directory.")?
     };
