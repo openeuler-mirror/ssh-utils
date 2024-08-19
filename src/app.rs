@@ -1,4 +1,5 @@
 use std::io::stdout;
+use std::time::Duration;
 
 use anyhow::Result;
 use crossterm::cursor::RestorePosition;
@@ -32,6 +33,7 @@ use ratatui::widgets::StatefulWidget;
 use ratatui::widgets::Widget;
 use ratatui::widgets::Wrap;
 use ratatui::Terminal;
+use tokio::time::sleep;
 
 use crate::config::app_config::Config;
 use crate::config::app_vault::decrypt_password;
@@ -337,7 +339,17 @@ impl<'a> App<'a> {
                                     )
                                     .await
                                     {
-                                        Ok(ssh) => ssh,
+                                        Ok(ssh) => {
+                                            self.render_popup(
+                                                "Connected!".to_string(),
+                                                PopupType::Info,
+                                            )?;
+                                            self.draw(&mut terminal)?;
+                                            // we wait for 1.5 sec to let user know
+                                            // it will be a new terminal.
+                                            sleep(Duration::from_millis(1500)).await;
+                                            ssh
+                                        }
                                         Err(e) => {
                                             self.show_popup = true;
                                             let error_message = if e.to_string().is_empty() {
