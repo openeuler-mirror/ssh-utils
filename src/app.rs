@@ -382,12 +382,24 @@ impl<'a> App<'a> {
                                             Clear(ClearType::FromCursorDown),
                                             crossterm::cursor::Show
                                         )?;
-                                        ssh.call(&server_shell).await?
+                                        match ssh.call(&server_shell).await {
+                                            Ok(code) => code,
+                                            Err(e) => {
+                                                self.render_popup(e.to_string(), PopupType::Error)?;
+                                                self.is_connecting = false;
+                                                1 // error occured
+                                            }
+                                        }
                                     };
-                                    ssh.close().await?;
+                                    match ssh.close().await {
+                                        Ok(_) => {}
+                                        Err(e) => {
+                                            self.render_popup(e.to_string(), PopupType::Error)?;
+                                            self.is_connecting = false;
+                                        }
+                                    }
                                     terminal.clear()?;
                                     debug_log!("debug.log", "Exitcode: {:?}", code);
-                                    // Connect success here
                                     self.is_connecting = false;
                                     self.show_popup = false;
                                 } else {
