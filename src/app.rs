@@ -91,13 +91,25 @@ impl ServerList {
     }
 }
 
+pub struct PopupInfo {
+    message: String,
+    popup_type: PopupType,
+}
+
+#[derive(Clone)]
+pub enum PopupType {
+    Info,
+    Error,
+}
+
 pub struct App<'a> {
     server_list: ServerList,
     vault: &'a mut Vault,
     config: &'a mut Config,
     encryption_key: EncryptionKey,
     show_popup: bool,
-    popup_message: Option<String>,
+    popup_info: Option<PopupInfo>,
+    is_connecting: bool,
 }
 
 impl<'a> Widget for &mut App<'a> {
@@ -177,7 +189,8 @@ impl<'a> App<'a> {
             config: config,
             encryption_key,
             show_popup: false,
-            popup_message: None,
+            popup_info: None,
+            is_connecting: false,
         };
         Ok(app)
     }
@@ -185,21 +198,33 @@ impl<'a> App<'a> {
     fn draw(&mut self, terminal: &mut Terminal<impl Backend>) -> Result<()> {
         terminal.draw(|f| {
             let show_popup = self.show_popup;
-            let message = self.popup_message.clone();
-            f.render_widget(self, f.area());
+            let message = self.popup_info.as_ref().map(|info| info.message.clone());
+            let title = match self.popup_info.as_ref().map(|info| info.popup_type.clone()) {
+                Some(PopupType::Info) => "Info".to_string(),
+                Some(PopupType::Error) => "Error".to_string(),
+                None => "Info".to_string(),
+            };
+            let border_color = match self.popup_info.as_ref().map(|info| info.popup_type.clone()) {
+                Some(PopupType::Info) => Color::LightGreen,
+                Some(PopupType::Error) => Color::LightRed,
+                None => Color::LightGreen,
+            };
             if show_popup {
                 let block = Block::default()
-                    .border_style(Style::default().fg(Color::LightRed))
-                    .title("Warning")
+                    .border_style(Style::default().fg(border_color))
+                    .title(title)
                     .borders(Borders::ALL);
                 let area = Self::centered_rect(50, 60, f.area());
                 if let Some(message) = message {
-                    let text = Paragraph::new(Text::raw(message).bg(Color::Black).fg(Color::White))
-                        .style(Style::default().bg(Color::Black))
+                    let text = Paragraph::new(Text::raw(message).fg(Color::White))
+                        .style(Style::default())
                         .wrap(Wrap { trim: true })
                         .block(block);
                     f.render_widget(text, area);
                 }
+            } else {
+                // we render the app itself on when there is no popup
+                f.render_widget(self, f.area());
             }
         })?;
         Ok(())
@@ -237,8 +262,11 @@ impl<'a> App<'a> {
             self.draw(&mut terminal)?;
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
-                    if self.show_popup {
+                    if !self.is_connecting && self.show_popup {
                         self.show_popup = false;
+                        continue;
+                    }
+                    if self.is_connecting {
                         continue;
                     }
                     match key.code {
@@ -279,8 +307,11 @@ impl<'a> App<'a> {
                         Enter => {
                             if let Some(selected_index) = self.server_list.state.selected() {
                                 let server = &self.server_list.items[selected_index];
+                                let server_id = server.id.clone();
+                                let server_address = server.address.clone();
+                                let server_username = server.username.clone();
                                 if let Some(password) = self.vault.servers.iter().find_map(|s| {
-                                    (s.id == server.id).then(|| {
+                                    (s.id == server_id).then(|| {
                                         decrypt_password(
                                             &s.id,
                                             &s.password,
@@ -293,12 +324,16 @@ impl<'a> App<'a> {
                                         debug_log!("debug.log", "IP: {}", server.address);
                                         debug_log!("debug.log", "User: {}", server.username);
                                     }
-
+                                    self.is_connecting = true;
+                                    self.render_popup(
+                                        "Connecting...".to_string(),
+                                        PopupType::Info,
+                                    )?;
+                                    self.draw(&mut terminal)?;
                                     let mut ssh = match Session::connect(
-                                        // TODO: 常见错误处理
-                                        server.username.clone(),
+                                        server_username.clone(),
                                         password.clone(),
-                                        (server.address.clone(), 22), // TODO: 可修改端口
+                                        (server_address.clone(), 22), // TODO: 可修改端口
                                     )
                                     .await
                                     {
@@ -311,7 +346,8 @@ impl<'a> App<'a> {
                                                 e.to_string()
                                             };
                                             debug_log!("debug.log", "{}", error_message);
-                                            self.render_popup(error_message)?;
+                                            self.render_popup(error_message, PopupType::Error)?;
+                                            self.is_connecting = false;
                                             continue;
                                         }
                                     };
@@ -329,11 +365,14 @@ impl<'a> App<'a> {
                                     ssh.close().await?;
                                     terminal.clear()?;
                                     debug_log!("debug.log", "Exitcode: {:?}", code);
+                                    // Connect success here
+                                    self.is_connecting = false;
+                                    self.show_popup = false;
                                 } else {
-                                    self.render_popup(format!(
-                                        "cannt find password of server {}",
-                                        server.name
-                                    ))?;
+                                    self.render_popup(
+                                        format!("cannt find password of server {}", server.name),
+                                        PopupType::Error,
+                                    )?;
                                 }
                             }
                         }
@@ -344,8 +383,11 @@ impl<'a> App<'a> {
         }
     }
 
-    fn render_popup(&mut self, message: String) -> Result<()> {
-        self.popup_message = Some(message);
+    fn render_popup(&mut self, message: String, popup_type: PopupType) -> Result<()> {
+        self.popup_info = Some(PopupInfo {
+            message,
+            popup_type,
+        });
         self.show_popup = true;
         Ok(())
     }
