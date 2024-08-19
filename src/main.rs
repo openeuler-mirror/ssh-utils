@@ -1,6 +1,8 @@
 mod app;
 mod config;
 mod helper;
+mod macros;
+mod ssh;
 mod widgets;
 
 use anyhow::{Context, Result};
@@ -25,7 +27,8 @@ use std::{
 };
 use zeroize::Zeroize;
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     // Setup panic hook
     panic::set_hook(Box::new(panic_hook));
     app_config::ensure_config_exists()?;
@@ -35,7 +38,7 @@ fn main() -> Result<()> {
     let app = App::new(&mut config, &mut vault, encryption_key)?;
     let mut terminal = create_terminal()?;
     setup_terminal(&mut terminal)?;
-    run_app(app, &mut terminal)?;
+    run_app(app, &mut terminal).await?;
     restore_terminal()?;
     Ok(())
 }
@@ -115,12 +118,11 @@ fn init_vault(encryption_key: &mut EncryptionKey) -> Result<Vault, anyhow::Error
     unreachable!()
 }
 
-
-fn run_app(
-    mut app: App,
-    terminal: &mut Terminal<CrosstermBackend<Stdout>>,
+async fn run_app<'a>(
+    mut app: App<'a>,
+    terminal: &'a mut Terminal<CrosstermBackend<Stdout>>,
 ) -> Result<(), anyhow::Error> {
-    app.run(terminal)?;
+    app.run(terminal).await?;
     Ok(())
 }
 

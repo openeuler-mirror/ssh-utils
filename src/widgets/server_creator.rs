@@ -327,7 +327,7 @@ fn ui(f: &mut Frame, server_creator: &ServerCreator) {
         Constraint::Min(0),
         Constraint::Length(1),
     ]);
-    let [head_area, body_area, foot_area] = vertical.areas(f.size());
+    let [head_area, body_area, foot_area] = vertical.areas(f.area());
     server_creator.render_header(head_area, f.buffer_mut());
     server_creator.render_form(body_area, f.buffer_mut());
     server_creator.render_footer(foot_area, f.buffer_mut());
@@ -338,7 +338,7 @@ fn ui(f: &mut Frame, server_creator: &ServerCreator) {
     //so here add 9
     let cursor_x = body_area.x + character_index + 9;
     let cursor_y = body_area.y + server_creator.current_select as u16;
-    f.set_cursor(cursor_x, cursor_y);
+    f.set_cursor_position((cursor_x, cursor_y));
 }
 
 #[test]
