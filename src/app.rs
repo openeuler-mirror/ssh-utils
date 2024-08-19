@@ -49,6 +49,8 @@ struct ServerItem {
     address: String,
     username: String,
     id: String,
+    shell: String,
+    port: u16,
 }
 
 struct ServerList {
@@ -183,6 +185,8 @@ impl<'a> App<'a> {
                 name: server.name,
                 address: server.ip,
                 username: server.user,
+                shell: server.shell,
+                port: server.port,
             })
             .collect();
         let app = Self {
@@ -301,6 +305,8 @@ impl<'a> App<'a> {
                                         name: server.name,
                                         address: server.ip,
                                         username: server.user,
+                                        shell: server.shell,
+                                        port: server.port,
                                     })
                                     .collect();
                                 self.server_list = ServerList::with_items(server_items);
@@ -312,6 +318,8 @@ impl<'a> App<'a> {
                                 let server_id = server.id.clone();
                                 let server_address = server.address.clone();
                                 let server_username = server.username.clone();
+                                let server_shell = server.shell.clone();
+                                let server_port = server.port.clone();
                                 if let Some(password) = self.vault.servers.iter().find_map(|s| {
                                     (s.id == server_id).then(|| {
                                         decrypt_password(
@@ -324,7 +332,9 @@ impl<'a> App<'a> {
                                 }) {
                                     if cfg!(debug_assertions) {
                                         debug_log!("debug.log", "IP: {}", server.address);
+                                        debug_log!("debug.log", "Port: {}", server.port);
                                         debug_log!("debug.log", "User: {}", server.username);
+                                        debug_log!("debug.log", "Shell: {}", server.shell);
                                     }
                                     self.is_connecting = true;
                                     self.render_popup(
@@ -335,7 +345,7 @@ impl<'a> App<'a> {
                                     let mut ssh = match Session::connect(
                                         server_username.clone(),
                                         password.clone(),
-                                        (server_address.clone(), 22), // TODO: 可修改端口
+                                        (server_address.clone(), server_port),
                                     )
                                     .await
                                     {
@@ -372,7 +382,7 @@ impl<'a> App<'a> {
                                             Clear(ClearType::FromCursorDown),
                                             crossterm::cursor::Show
                                         )?;
-                                        ssh.call("bash").await? // TODO: 可修改启动命令
+                                        ssh.call(&server_shell).await?
                                     };
                                     ssh.close().await?;
                                     terminal.clear()?;

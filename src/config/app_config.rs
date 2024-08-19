@@ -11,15 +11,19 @@ pub struct Server {
     pub name: String,
     pub ip: String,
     pub user: String,
+    pub shell: String,
+    pub port: u16,
 }
 
 impl Server {
-    pub fn new(name: String, ip: String, user: String) -> Self {
+    pub fn new(name: String, ip: String, user: String, shell: String, port: u16) -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
             name,
             ip,
             user,
+            shell,
+            port,
         }
     }
 }

@@ -23,8 +23,10 @@ use crate::{
 enum CurrentSelect {
     User = 0,
     Ip,
+    Port,
     Password,
     Name,
+    Shell,
 }
 
 /// impl Add and Sub for CurrentSelect
@@ -32,12 +34,14 @@ impl Add for CurrentSelect {
     type Output = Self;
 
     fn add(self, other: Self) -> Self {
-        let new_value = (self as isize + other as isize) % 4;
+        let new_value = (self as isize + other as isize) % 6;
         match new_value {
             0 => CurrentSelect::User,
             1 => CurrentSelect::Ip,
-            2 => CurrentSelect::Password,
-            3 => CurrentSelect::Name,
+            2 => CurrentSelect::Port,
+            3 => CurrentSelect::Password,
+            4 => CurrentSelect::Name,
+            5 => CurrentSelect::Shell,
             _ => unreachable!(),
         }
     }
@@ -47,12 +51,14 @@ impl Sub for CurrentSelect {
     type Output = Self;
 
     fn sub(self, other: Self) -> Self {
-        let new_value = (self as isize - other as isize + 4) % 4;
+        let new_value = (self as isize - other as isize + 6) % 6;
         match new_value {
             0 => CurrentSelect::User,
             1 => CurrentSelect::Ip,
-            2 => CurrentSelect::Password,
-            3 => CurrentSelect::Name,
+            2 => CurrentSelect::Port,
+            3 => CurrentSelect::Password,
+            4 => CurrentSelect::Name,
+            5 => CurrentSelect::Shell,
             _ => unreachable!(),
         }
     }
@@ -62,12 +68,14 @@ impl Add<isize> for CurrentSelect {
     type Output = Self;
 
     fn add(self, other: isize) -> Self {
-        let new_value = (self as isize + other).rem_euclid(4);
+        let new_value = (self as isize + other).rem_euclid(6);
         match new_value {
             0 => CurrentSelect::User,
             1 => CurrentSelect::Ip,
-            2 => CurrentSelect::Password,
-            3 => CurrentSelect::Name,
+            2 => CurrentSelect::Port,
+            3 => CurrentSelect::Password,
+            4 => CurrentSelect::Name,
+            5 => CurrentSelect::Shell,
             _ => unreachable!(),
         }
     }
@@ -77,12 +85,14 @@ impl Sub<isize> for CurrentSelect {
     type Output = Self;
 
     fn sub(self, other: isize) -> Self {
-        let new_value = (self as isize - other).rem_euclid(4);
+        let new_value = (self as isize - other).rem_euclid(6);
         match new_value {
             0 => CurrentSelect::User,
             1 => CurrentSelect::Ip,
-            2 => CurrentSelect::Password,
-            3 => CurrentSelect::Name,
+            2 => CurrentSelect::Port,
+            3 => CurrentSelect::Password,
+            4 => CurrentSelect::Name,
+            5 => CurrentSelect::Shell,
             _ => unreachable!(),
         }
     }
@@ -120,7 +130,7 @@ pub struct ServerCreator<'a> {
 impl<'a> ServerCreator<'a> {
     pub fn new(vault: &'a mut Vault, config: &'a mut Config, encryption_key: &'a EncryptionKey) -> Self {
         Self {
-            input: vec![String::new(), String::new(), String::new(), String::new()],
+            input: vec![String::new(), String::new(), "22".to_string(), String::new(), String::new(), "bash".to_string()],
             character_index: 0,
             current_select: CurrentSelect::User,
             vault,
@@ -149,6 +159,10 @@ impl<'a> ServerCreator<'a> {
             "      ip:".into(),
             self.input[CurrentSelect::Ip as usize].clone().into(),
         ];
+        let mut port: Vec<Span> = vec![
+            "    port:".into(),
+            self.input[CurrentSelect::Port as usize].clone().into(),
+        ];
         // we use * to replace the password
         let password_length = self.input[CurrentSelect::Password as usize].len();
         let masked_password: String = "*".repeat(password_length);
@@ -157,19 +171,27 @@ impl<'a> ServerCreator<'a> {
             "    name:".into(),
             self.input[CurrentSelect::Name as usize].clone().into(),
         ];
+        let mut shell: Vec<Span> = vec![
+            "   shell:".into(),
+            self.input[CurrentSelect::Shell as usize].clone().into(),
+        ];
 
         match self.current_select {
             CurrentSelect::User => user[0] = Span::styled("    user:", Style::new().bold()),
             CurrentSelect::Ip => ip[0] = Span::styled("      ip:", Style::new().bold()),
+            CurrentSelect::Port => port[0] = Span::styled("    port:", Style::new().bold()),
             CurrentSelect::Password => password[0] = Span::styled("password:", Style::new().bold()),
             CurrentSelect::Name => name[0] = Span::styled("    name:", Style::new().bold()),
+            CurrentSelect::Shell => shell[0] = Span::styled("   shell:", Style::new().bold()),
         }
 
         let user_line = Line::from(user);
         let ip_line = Line::from(ip);
+        let port_line = Line::from(port);
         let password_line = Line::from(password);
         let name_line = Line::from(name);
-        let text = vec![user_line, ip_line, password_line, name_line];
+        let shell_line = Line::from(shell);
+        let text = vec![user_line, ip_line, port_line, password_line, name_line, shell_line];
         let form = Paragraph::new(text);
         Widget::render(&form, area, buf);
     }
@@ -279,6 +301,8 @@ impl<'a> ServerCreator<'a> {
                                         self.input[CurrentSelect::Name as usize].clone(),
                                         self.input[CurrentSelect::Ip as usize].clone(),
                                         self.input[CurrentSelect::User as usize].clone(),
+                                        self.input[CurrentSelect::Shell as usize].clone(),
+                                        self.input[CurrentSelect::Port as usize].parse::<u16>().unwrap_or(22),
                                     );
                                     let passwd = encrypt_password(
                                         &config_server.id,
