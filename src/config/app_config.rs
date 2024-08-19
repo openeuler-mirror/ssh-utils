@@ -67,6 +67,8 @@ impl Config {
             server.name = new_server.name.clone();
             server.ip = new_server.ip.clone();
             server.user = new_server.user.clone();
+            server.shell = new_server.shell.clone();
+            server.port = new_server.port;
             self.save()?;
         } else {
             return Err(anyhow::anyhow!("Server with id {} not found", id));

@@ -14,8 +14,9 @@ use std::ops::{Add, Sub};
 use crate::{
     config::{
         app_config::{Config, Server},
-        app_vault::{self, encrypt_password, EncryptionKey, Vault},
-    }, helper::convert_to_array,
+        app_vault::{self, decrypt_password, encrypt_password, EncryptionKey, Vault},
+    },
+    helper::convert_to_array,
 };
 
 /// current selected item in form
@@ -110,6 +111,8 @@ pub struct ServerCreator<'a> {
     vault: &'a mut Vault,
     config: &'a mut Config,
     encryption_key: &'a EncryptionKey,
+    mode: CreatorMode,
+    server_id: Option<String>,
 }
 
 // impl Widget for &mut ServerCreator {
@@ -126,16 +129,73 @@ pub struct ServerCreator<'a> {
 //         self.render_footer(foot_area, buf);
 //     }
 // }
+#[derive(PartialEq)]
+enum CreatorMode {
+    New,
+    Edit,
+}
 
 impl<'a> ServerCreator<'a> {
-    pub fn new(vault: &'a mut Vault, config: &'a mut Config, encryption_key: &'a EncryptionKey) -> Self {
+    pub fn new(
+        vault: &'a mut Vault,
+        config: &'a mut Config,
+        encryption_key: &'a EncryptionKey,
+    ) -> Self {
         Self {
-            input: vec![String::new(), String::new(), "22".to_string(), String::new(), String::new(), "bash".to_string()],
+            input: vec![
+                String::new(),
+                String::new(),
+                "22".to_string(),
+                String::new(),
+                String::new(),
+                "bash".to_string(),
+            ],
             character_index: 0,
             current_select: CurrentSelect::User,
             vault,
             config,
             encryption_key,
+            mode: CreatorMode::New,
+            server_id: None,
+        }
+    }
+
+    pub fn new_edit(
+        vault: &'a mut Vault,
+        config: &'a mut Config,
+        encryption_key: &'a EncryptionKey,
+        server_id: &str,
+    ) -> Self {
+        let server = config.servers.iter().find(|s| s.id == server_id).unwrap();
+        let password = vault
+            .servers
+            .iter()
+            .find(|s| s.id == server_id)
+            .unwrap()
+            .password
+            .clone();
+        let decrypted_password = decrypt_password(
+            &server_id,
+            &password,
+            &convert_to_array(&encryption_key).unwrap(),
+        )
+        .unwrap();
+        Self {
+            input: vec![
+                server.user.clone(),
+                server.ip.clone(),
+                server.port.to_string(),
+                decrypted_password,
+                server.name.clone(),
+                server.shell.clone(),
+            ],
+            character_index: 0,
+            current_select: CurrentSelect::User,
+            vault,
+            config,
+            encryption_key,
+            mode: CreatorMode::Edit,
+            server_id: Some(server_id.to_string()),
         }
     }
 
@@ -191,7 +251,14 @@ impl<'a> ServerCreator<'a> {
         let password_line = Line::from(password);
         let name_line = Line::from(name);
         let shell_line = Line::from(shell);
-        let text = vec![user_line, ip_line, port_line, password_line, name_line, shell_line];
+        let text = vec![
+            user_line,
+            ip_line,
+            port_line,
+            password_line,
+            name_line,
+            shell_line,
+        ];
         let form = Paragraph::new(text);
         Widget::render(&form, area, buf);
     }
@@ -297,21 +364,53 @@ impl<'a> ServerCreator<'a> {
                             if to_insert == 's' {
                                 if key.modifiers == event::KeyModifiers::CONTROL {
                                     let encryption_key = convert_to_array(&self.encryption_key)?;
-                                    let config_server = Server::new(
+                                    let mut config_server = Server::new(
                                         self.input[CurrentSelect::Name as usize].clone(),
                                         self.input[CurrentSelect::Ip as usize].clone(),
                                         self.input[CurrentSelect::User as usize].clone(),
                                         self.input[CurrentSelect::Shell as usize].clone(),
-                                        self.input[CurrentSelect::Port as usize].parse::<u16>().unwrap_or(22),
+                                        self.input[CurrentSelect::Port as usize]
+                                            .parse::<u16>()
+                                            .unwrap_or(22),
                                     );
+                                    if self.mode == CreatorMode::Edit {
+                                        let Some(server_id) = self.server_id.clone() else {
+                                            return Err(anyhow::anyhow!("Server ID not found"));
+                                        };
+                                        config_server.id = server_id;
+                                    }
                                     let passwd = encrypt_password(
                                         &config_server.id,
-                                        self.input[CurrentSelect::Password as usize].clone().as_str(),
+                                        self.input[CurrentSelect::Password as usize]
+                                            .clone()
+                                            .as_str(),
                                         &encryption_key,
                                     )?;
-                                    self.config.add_server(config_server.clone())?;
-                                    let vault_server = app_vault::Server::new(config_server.id.clone(),passwd);
-                                    self.vault.add_server(vault_server, &encryption_key)?;
+                                    let vault_server =
+                                        app_vault::Server::new(config_server.id.clone(), passwd);
+
+                                    if self
+                                        .config
+                                        .servers
+                                        .iter()
+                                        .find(|s| s.id == config_server.id)
+                                        .is_some()
+                                    {
+                                        // branch 1: modify server
+                                        self.config.modify_server(
+                                            config_server.id.as_str(),
+                                            config_server.clone(),
+                                        )?;
+                                        self.vault.modify_server(
+                                            config_server.id.as_str(),
+                                            vault_server,
+                                            &encryption_key,
+                                        )?;
+                                    } else {
+                                        //branch 2: add server
+                                        self.config.add_server(config_server.clone())?;
+                                        self.vault.add_server(vault_server, &encryption_key)?;
+                                    }
                                     return Ok(true);
                                 }
                             }
@@ -375,7 +474,8 @@ fn run_widget() -> Result<()> {
 
     // get vault start
     let mut encryption_key: EncryptionKey = Vec::with_capacity(32);
-    let mut vault_file = std::fs::File::open(crate::helper::get_file_path(crate::helper::ENCRYPTED_FILE)?)?;
+    let mut vault_file =
+        std::fs::File::open(crate::helper::get_file_path(crate::helper::ENCRYPTED_FILE)?)?;
     let mut vault_buf: EncryptionKey = Vec::new();
     std::io::Read::read_to_end(&mut vault_file, &mut vault_buf)?;
     let try_encryption_key: [u8; 32] = crate::config::crypto::derive_key_from_password("123")?;

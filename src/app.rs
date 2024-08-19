@@ -140,7 +140,7 @@ impl<'a> App<'a> {
     }
 
     fn render_footer(&self, area: Rect, buf: &mut Buffer) {
-        let text = Text::from("  Add (A), Delete (D), Quit (ESC)").dim();
+        let text = Text::from("  Add (A), Edit (E), Delete (D), Quit (ESC)").dim();
         Widget::render(text, area, buf);
     }
 
@@ -293,23 +293,23 @@ impl<'a> App<'a> {
                                 ServerCreator::new(self.vault, self.config, &self.encryption_key);
 
                             if server_creator.run(&mut terminal)? {
-                                // add a new server
-                                // Refresh self.server_list
-                                let server_items: Vec<ServerItem> = self
-                                    .config
-                                    .servers
-                                    .clone()
-                                    .into_iter()
-                                    .map(|server| ServerItem {
-                                        id: server.id,
-                                        name: server.name,
-                                        address: server.ip,
-                                        username: server.user,
-                                        shell: server.shell,
-                                        port: server.port,
-                                    })
-                                    .collect();
-                                self.server_list = ServerList::with_items(server_items);
+                                self.refresh_serverlist();
+                            }
+                        }
+                        Char('e') => {
+                            // Edit server
+                            if let Some(selected_index) = self.server_list.state.selected() {
+                                let server = &self.server_list.items[selected_index];
+                                let server_id = server.id.clone();
+                                let mut server_creator = ServerCreator::new_edit(
+                                    self.vault,
+                                    self.config,
+                                    &self.encryption_key,
+                                    server_id.as_str(),
+                                );
+                                if server_creator.run(&mut terminal)? {
+                                    self.refresh_serverlist();
+                                }
                             }
                         }
                         Char('d') => {
@@ -427,6 +427,24 @@ impl<'a> App<'a> {
                 }
             }
         }
+    }
+
+    fn refresh_serverlist(&mut self) {
+        let server_items: Vec<ServerItem> = self
+            .config
+            .servers
+            .clone()
+            .into_iter()
+            .map(|server| ServerItem {
+                id: server.id,
+                name: server.name,
+                address: server.ip,
+                username: server.user,
+                shell: server.shell,
+                port: server.port,
+            })
+            .collect();
+        self.server_list = ServerList::with_items(server_items);
     }
 
     fn render_popup(&mut self, message: String, popup_type: PopupType) -> Result<()> {
