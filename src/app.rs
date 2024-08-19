@@ -312,6 +312,18 @@ impl<'a> App<'a> {
                                 self.server_list = ServerList::with_items(server_items);
                             }
                         }
+                        Char('d') => {
+                            if let Some(selected_index) = self.server_list.state.selected() {
+                                let server = &self.server_list.items[selected_index];
+                                let server_id = server.id.clone();
+                                self.config.delete_server(server_id.as_str())?;
+                                self.server_list.items.remove(selected_index);
+                                self.vault.delete_server(
+                                    server_id.as_str(),
+                                    &convert_to_array(&self.encryption_key)?,
+                                )?;
+                            }
+                        }
                         Enter => {
                             if let Some(selected_index) = self.server_list.state.selected() {
                                 let server = &self.server_list.items[selected_index];
