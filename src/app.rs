@@ -1,4 +1,6 @@
 use std::io::stdout;
+use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -41,7 +43,9 @@ use crate::config::app_vault::EncryptionKey;
 use crate::config::app_vault::Vault;
 use crate::debug_log;
 use crate::helper::convert_to_array;
-use crate::ssh::session::Session;
+use crate::ssh::key_session::KeySession;
+use crate::ssh::password_session::PasswordSession;
+use crate::ssh::ssh_session::{AuthMethod, SshSession};
 use crate::widgets::server_creator::ServerCreator;
 
 struct ServerItem {
@@ -354,23 +358,79 @@ impl<'a> App<'a> {
                                         PopupType::Info,
                                     )?;
                                     self.draw(&mut terminal)?;
-                                    let mut ssh = match Session::connect(
-                                        server_username.clone(),
-                                        password.clone(),
-                                        (server_address.clone(), server_port),
-                                    )
-                                    .await
-                                    {
-                                        Ok(ssh) => {
+
+                                    let is_password_empty = password.is_empty();
+                                    let result: Result<Arc<dyn SshSession>, anyhow::Error> =
+                                        if is_password_empty {
+                                            let key_path: Option<PathBuf> = find_best_key();
+                                            if key_path.is_none() {
+                                                return Err(anyhow::anyhow!("No suitable SSH key found"));
+                                            }
+                                            KeySession::connect(
+                                                server_username.clone(),
+                                                AuthMethod::Key(key_path.unwrap()),
+                                                (server_address.clone(), server_port),
+                                            )
+                                            .await
+                                            .map(|session| Arc::new(session) as Arc<dyn SshSession>)
+                                        } else {
+                                            PasswordSession::connect(
+                                                server_username.clone(),
+                                                AuthMethod::Password(password.clone()),
+                                                (server_address.clone(), server_port),
+                                            )
+                                            .await
+                                            .map(|session| Arc::new(session) as Arc<dyn SshSession>)
+                                        };
+
+                                    match result {
+                                        Ok(mut ssh) => {
                                             self.render_popup(
                                                 "Connected!".to_string(),
                                                 PopupType::Info,
                                             )?;
                                             self.draw(&mut terminal)?;
-                                            // we wait for 1.5 sec to let user know
-                                            // it will be a new terminal.
                                             sleep(Duration::from_millis(1500)).await;
-                                            ssh
+
+                                            // 处理 SSH 会话
+                                            let code = {
+                                                terminal.clear()?;
+                                                execute!(
+                                                    stdout(),
+                                                    RestorePosition,
+                                                    Clear(ClearType::FromCursorDown),
+                                                    crossterm::cursor::Show
+                                                )?;
+                                                match Arc::get_mut(&mut ssh)
+                                                    .unwrap()
+                                                    .call(&server_shell)
+                                                    .await
+                                                {
+                                                    Ok(code) => code,
+                                                    Err(e) => {
+                                                        self.render_popup(
+                                                            e.to_string(),
+                                                            PopupType::Error,
+                                                        )?;
+                                                        self.is_connecting = false;
+                                                        1 // error occurred
+                                                    }
+                                                }
+                                            };
+                                            match Arc::get_mut(&mut ssh).unwrap().close().await {
+                                                Ok(_) => {}
+                                                Err(e) => {
+                                                    self.render_popup(
+                                                        e.to_string(),
+                                                        PopupType::Error,
+                                                    )?;
+                                                    self.is_connecting = false;
+                                                }
+                                            }
+                                            terminal.clear()?;
+                                            debug_log!("debug.log", "Exitcode: {:?}", code);
+                                            self.is_connecting = false;
+                                            self.show_popup = false;
                                         }
                                         Err(e) => {
                                             self.show_popup = true;
@@ -382,41 +442,11 @@ impl<'a> App<'a> {
                                             debug_log!("debug.log", "{}", error_message);
                                             self.render_popup(error_message, PopupType::Error)?;
                                             self.is_connecting = false;
-                                            continue;
-                                        }
-                                    };
-                                    // 处理 SSH 会话
-                                    let code = {
-                                        terminal.clear()?;
-                                        execute!(
-                                            stdout(),
-                                            RestorePosition,
-                                            Clear(ClearType::FromCursorDown),
-                                            crossterm::cursor::Show
-                                        )?;
-                                        match ssh.call(&server_shell).await {
-                                            Ok(code) => code,
-                                            Err(e) => {
-                                                self.render_popup(e.to_string(), PopupType::Error)?;
-                                                self.is_connecting = false;
-                                                1 // error occured
-                                            }
-                                        }
-                                    };
-                                    match ssh.close().await {
-                                        Ok(_) => {}
-                                        Err(e) => {
-                                            self.render_popup(e.to_string(), PopupType::Error)?;
-                                            self.is_connecting = false;
                                         }
                                     }
-                                    terminal.clear()?;
-                                    debug_log!("debug.log", "Exitcode: {:?}", code);
-                                    self.is_connecting = false;
-                                    self.show_popup = false;
                                 } else {
                                     self.render_popup(
-                                        format!("cannt find password of server {}", server.name),
+                                        format!("Cannot find password of server {}", server.name),
                                         PopupType::Error,
                                     )?;
                                 }
@@ -455,4 +485,26 @@ impl<'a> App<'a> {
         self.show_popup = true;
         Ok(())
     }
+}
+
+fn find_best_key() -> Option<PathBuf> {
+    let home_dir = dirs::home_dir()?;
+    let ssh_dir = home_dir.join(".ssh");
+
+    let key_priorities = [
+        "id_ecdsa",     // ecdsa-sha2-nistp256
+        "id_ecdsa_384", // ecdsa-sha2-nistp384
+        "id_ecdsa_521", // ecdsa-sha2-nistp521
+        "id_ed25519",   // ssh-ed25519
+        "id_rsa",       // rsa-sha2-256, rsa-sha2-512, ssh-rsa
+    ];
+
+    for key_name in key_priorities.iter() {
+        let key_path = ssh_dir.join(key_name);
+        if key_path.exists() {
+            return Some(key_path);
+        }
+    }
+
+    None
 }

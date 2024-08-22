@@ -1,5 +1,6 @@
 use std::convert::TryFrom;
 use std::env;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -9,6 +10,8 @@ use russh::keys::*;
 use russh::*;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::ToSocketAddrs;
+
+use super::ssh_session::{AuthMethod, SshSession};
 
 pub struct Client {}
 
@@ -30,16 +33,25 @@ impl client::Handler for Client {
 /// This struct is a convenience wrapper
 /// around a russh client
 /// that handles the input/output event loop
-pub struct Session {
+pub struct KeySession {
     session: client::Handle<Client>,
 }
 
-impl Session {
-    pub async fn connect<A: ToSocketAddrs>(
-        user: impl Into<String>,
-        password: String,
+#[async_trait::async_trait]
+impl SshSession for KeySession {
+    async fn connect<A: ToSocketAddrs + Send>(
+        user: impl Into<String> + Send,
+        auth: impl Into<AuthMethod> + Send,
         addrs: A,
     ) -> Result<Self> {
+        let auth = auth.into();
+        let key_path = match auth {
+            AuthMethod::Key(path) => path,
+            AuthMethod::Password(_) => anyhow::bail!("KeySession only supports key authentication"),
+        };
+
+        let key_pair = load_secret_key(key_path, None)?;
+
         let config = client::Config {
             //inactivity_timeout: Some(Duration::from_secs(5)),
             ..<_>::default()
@@ -50,19 +62,19 @@ impl Session {
 
         let mut session = client::connect(config, addrs, sh).await?;
 
-        // Use password for authentication
+        // 使用公钥进行认证
         let auth_res = session
-            .authenticate_password(user, password)
+            .authenticate_publickey(user, Arc::new(key_pair))
             .await?;
 
         if !auth_res {
-            anyhow::bail!("Authentication (with password) failed");
+            anyhow::bail!("public key authentication failed");
         }
 
         Ok(Self { session })
     }
 
-    pub async fn call(&mut self, command: &str) -> Result<u32> {
+    async fn call(&mut self, command: &str) -> Result<u32> {
         let mut channel = self.session.channel_open_session().await?;
 
         // This example doesn't terminal resizing after the connection is established
@@ -127,7 +139,7 @@ impl Session {
         Ok(code)
     }
 
-    pub async fn close(&mut self) -> Result<()> {
+    async fn close(&mut self) -> Result<()> {
         self.session
             .disconnect(Disconnect::ByApplication, "", "English")
             .await?;
@@ -147,8 +159,8 @@ pub struct Cli {
     #[clap(long, short)]
     username: String,
 
-    #[clap(long, short)]
-    password: String,
+    #[clap(long, short = 'k')]
+    private_key: PathBuf,
 
     #[clap(num_args = 1.., index = 2, required = true)]
     command: Vec<String>,

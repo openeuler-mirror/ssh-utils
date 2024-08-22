@@ -200,12 +200,21 @@ impl<'a> ServerCreator<'a> {
     }
 
     fn render_header(&self, area: Rect, buf: &mut Buffer) {
-        let text = Text::from("Enter server information below:").yellow();
+        let text = Text::from("Enter server details below:").yellow();
         Widget::render(text, area, buf);
     }
 
     fn render_footer(&self, area: Rect, buf: &mut Buffer) {
-        let text = Text::from("  Save (^S), Quit (ESC)").dim();
+        let text =
+            Text::from("  Save (^S), Quit (ESC)")
+                .dim();
+        Widget::render(text, area, buf);
+    }
+
+    fn render_sshtip(&self, area: Rect, buf: &mut Buffer) {
+        let text =
+            Text::from("  Leave password empty to use the default SSH key.")
+                .dim();
         Widget::render(text, area, buf);
     }
 
@@ -449,12 +458,13 @@ fn ui(f: &mut Frame, server_creator: &ServerCreator) {
         Constraint::Length(1),
         Constraint::Min(0),
         Constraint::Length(1),
+        Constraint::Length(1),
     ]);
-    let [head_area, body_area, foot_area] = vertical.areas(f.area());
+    let [head_area, body_area, foot_area, ssh_tip_area] = vertical.areas(f.area());
     server_creator.render_header(head_area, f.buffer_mut());
     server_creator.render_form(body_area, f.buffer_mut());
     server_creator.render_footer(foot_area, f.buffer_mut());
-
+    server_creator.render_sshtip(ssh_tip_area, f.buffer_mut());
     let character_index = server_creator.character_index as u16;
     //due to input character index start at 9
     //eg: "password:"
