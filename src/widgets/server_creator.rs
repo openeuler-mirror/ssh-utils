@@ -166,17 +166,23 @@ impl<'a> ServerCreator<'a> {
         encryption_key: &'a EncryptionKey,
         server_id: &str,
     ) -> Result<Self> {
-        let server = config.servers.iter().find(|s| s.id == server_id)
+        let server = config
+            .servers
+            .iter()
+            .find(|s| s.id == server_id)
             .ok_or_else(|| anyhow::anyhow!("can't find server."))?;
-        let password = vault.servers.iter().find(|s| s.id == server_id)
+        let password = vault
+            .servers
+            .iter()
+            .find(|s| s.id == server_id)
             .ok_or_else(|| anyhow::anyhow!("can't find server password."))?
-            .password.clone();
+            .password
+            .clone();
         let decrypted_password = decrypt_password(
             &server_id,
             &password,
-            &convert_to_array(&encryption_key).map_err(
-                |e| anyhow::anyhow!("encryption key convert failed: {}", e),
-            )?,
+            &convert_to_array(&encryption_key)
+                .map_err(|e| anyhow::anyhow!("encryption key convert failed: {}", e))?,
         )?;
         Ok(Self {
             input: vec![
@@ -203,16 +209,7 @@ impl<'a> ServerCreator<'a> {
     }
 
     fn render_footer(&self, area: Rect, buf: &mut Buffer) {
-        let text =
-            Text::from("  Save (^S), Quit (ESC)")
-                .dim();
-        Widget::render(text, area, buf);
-    }
-
-    fn render_sshtip(&self, area: Rect, buf: &mut Buffer) {
-        let text =
-            Text::from("  Leave password empty to use the default SSH key.")
-                .dim();
+        let text = Text::from("  Save (^S), Quit (ESC)").dim();
         Widget::render(text, area, buf);
     }
 
@@ -255,7 +252,13 @@ impl<'a> ServerCreator<'a> {
         let user_line = Line::from(user);
         let ip_line = Line::from(ip);
         let port_line = Line::from(port);
-        let password_line = Line::from(password);
+        let password_line = if password_length == 0 {
+            password[1] =
+                Span::styled("leave empty to use the default SSH key", Style::new().dim());
+            Line::from(password)
+        } else {
+            Line::from(password)
+        };
         let name_line = Line::from(name);
         let shell_line = Line::from(shell);
         let text = vec![
@@ -456,13 +459,11 @@ fn ui(f: &mut Frame, server_creator: &ServerCreator) {
         Constraint::Length(1),
         Constraint::Min(0),
         Constraint::Length(1),
-        Constraint::Length(1),
     ]);
-    let [head_area, body_area, foot_area, ssh_tip_area] = vertical.areas(f.area());
+    let [head_area, body_area, foot_area] = vertical.areas(f.area());
     server_creator.render_header(head_area, f.buffer_mut());
     server_creator.render_form(body_area, f.buffer_mut());
     server_creator.render_footer(foot_area, f.buffer_mut());
-    server_creator.render_sshtip(ssh_tip_area, f.buffer_mut());
     let character_index = server_creator.character_index as u16;
     //due to input character index start at 9
     //eg: "password:"

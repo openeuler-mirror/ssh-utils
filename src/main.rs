@@ -14,7 +14,10 @@ use config::{
     crypto::derive_key_from_password,
 };
 use crossterm::{
-    cursor::{RestorePosition, SavePosition}, execute, style::{Color, ResetColor, SetForegroundColor}, terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType}
+    cursor::{RestorePosition, SavePosition},
+    execute,
+    style::{Color, ResetColor, SetForegroundColor},
+    terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType},
 };
 use helper::{get_file_path, ENCRYPTED_FILE};
 use ratatui::{backend::CrosstermBackend, Terminal, TerminalOptions, Viewport};
@@ -100,7 +103,7 @@ fn init_vault(encryption_key: &mut EncryptionKey) -> Result<Vault, anyhow::Error
     if check_if_vault_bin_exists()? {
         for attempt in 1..=3 {
             let prompt_message = if attempt == 1 {
-                "You are the first time to use this tool, please enter a passphrase: ".to_string()
+                "please enter a passphrase: ".to_string()
             } else {
                 format!("Enter passphrase (Attempt {} of 3): ", attempt)
             };
@@ -135,7 +138,13 @@ fn init_vault(encryption_key: &mut EncryptionKey) -> Result<Vault, anyhow::Error
             }
         }
     } else {
-        let mut passphrase = prompt_passphrase("Enter passphrase (empty for no passphrase): ")?;
+        execute!(
+            io::stdout(),
+            SetForegroundColor(Color::Green),
+            crossterm::style::Print("You are the first time to use this tool.\n"),
+            ResetColor
+        )?;
+        let mut passphrase = prompt_passphrase("Enter a passphrase to start (empty for no passphrase): ")?;
         let mut confirm_passphrase = prompt_passphrase("Enter the same passphrase again: ")?;
         if passphrase == confirm_passphrase {
             let try_encryption_key: [u8; 32] = derive_key_from_password(passphrase.as_str())?;
