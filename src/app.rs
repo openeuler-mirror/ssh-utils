@@ -364,7 +364,12 @@ impl<'a> App<'a> {
                                         if is_password_empty {
                                             let key_path: Option<PathBuf> = find_best_key();
                                             if key_path.is_none() {
-                                                return Err(anyhow::anyhow!("No suitable SSH key found"));
+                                                self.render_popup(
+                                                            "No suitable SSH key found".to_string(),
+                                                            PopupType::Error,
+                                                        )?;
+                                                self.is_connecting = false;
+                                                continue;
                                             }
                                             KeySession::connect(
                                                 server_username.clone(),
