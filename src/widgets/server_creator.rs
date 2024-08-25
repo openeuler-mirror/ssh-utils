@@ -165,7 +165,7 @@ impl<'a> ServerCreator<'a> {
         config: &'a mut Config,
         encryption_key: &'a EncryptionKey,
         server_id: &str,
-    ) -> Self {
+    ) -> Result<Self> {
         let server = config.servers.iter().find(|s| s.id == server_id).unwrap();
         let password = vault
             .servers
@@ -178,9 +178,8 @@ impl<'a> ServerCreator<'a> {
             &server_id,
             &password,
             &convert_to_array(&encryption_key).unwrap(),
-        )
-        .unwrap();
-        Self {
+        )?;
+        Ok(Self {
             input: vec![
                 server.user.clone(),
                 server.ip.clone(),
@@ -196,7 +195,7 @@ impl<'a> ServerCreator<'a> {
             encryption_key,
             mode: CreatorMode::Edit,
             server_id: Some(server_id.to_string()),
-        }
+        })
     }
 
     fn render_header(&self, area: Rect, buf: &mut Buffer) {

@@ -35,6 +35,8 @@ use ratatui::widgets::StatefulWidget;
 use ratatui::widgets::Widget;
 use ratatui::widgets::Wrap;
 use ratatui::Terminal;
+use russh_keys::key::KeyPair;
+use russh_keys::load_secret_key;
 use tokio::time::sleep;
 
 use crate::config::app_config::Config;
@@ -46,6 +48,7 @@ use crate::helper::convert_to_array;
 use crate::ssh::key_session::KeySession;
 use crate::ssh::password_session::PasswordSession;
 use crate::ssh::ssh_session::{AuthMethod, SshSession};
+use crate::widgets::popup_input_box::PopupInputBox;
 use crate::widgets::server_creator::ServerCreator;
 
 struct ServerItem {
@@ -310,7 +313,7 @@ impl<'a> App<'a> {
                                     self.config,
                                     &self.encryption_key,
                                     server_id.as_str(),
-                                );
+                                )?;
                                 if server_creator.run(&mut terminal)? {
                                     self.refresh_serverlist();
                                 }
@@ -362,23 +365,36 @@ impl<'a> App<'a> {
                                     let is_password_empty = password.is_empty();
                                     let result: Result<Arc<dyn SshSession>, anyhow::Error> =
                                         if is_password_empty {
+                                            // result 1
                                             let key_path: Option<PathBuf> = find_best_key();
                                             if key_path.is_none() {
                                                 self.render_popup(
-                                                            "No suitable SSH key found".to_string(),
-                                                            PopupType::Error,
-                                                        )?;
+                                                    "No suitable SSH key found".to_string(),
+                                                    PopupType::Error,
+                                                )?;
                                                 self.is_connecting = false;
                                                 continue;
                                             }
+                                            let key_path = key_path.unwrap(); // unwrap is safe here
+                                            let key_pair: Result<KeyPair, anyhow::Error> = load_key_with_passphrase(key_path, &mut terminal);
+                                            let key_pair = match key_pair {
+                                                Ok(key_pair) => key_pair,
+                                                Err(_) => {
+                                                    self.render_popup("Wrong passphrase.".to_string(), PopupType::Error)?;
+                                                    self.is_connecting = false;
+                                                    continue;
+                                                },
+                                            };
                                             KeySession::connect(
                                                 server_username.clone(),
-                                                AuthMethod::Key(key_path.unwrap()),
+                                                AuthMethod::Key(key_pair),
                                                 (server_address.clone(), server_port),
                                             )
                                             .await
+                                            .and_then(|session| Ok(session))
                                             .map(|session| Arc::new(session) as Arc<dyn SshSession>)
                                         } else {
+                                            // result 2
                                             PasswordSession::connect(
                                                 server_username.clone(),
                                                 AuthMethod::Password(password.clone()),
@@ -512,4 +528,16 @@ fn find_best_key() -> Option<PathBuf> {
     }
 
     None
+}
+
+fn load_key_with_passphrase(key_path: PathBuf, terminal: &mut Terminal<impl Backend>) -> Result<russh_keys::key::KeyPair> {
+    load_secret_key(key_path.clone(), None).or_else(|e| {
+        if let russh_keys::Error::KeyIsEncrypted = e {
+            let mut input_box = PopupInputBox::new(" Input key's passphrase: ".to_string());
+            let passphrase = input_box.run(terminal)?.ok_or_else(|| anyhow::anyhow!("Input is empty"))?;
+            load_secret_key(key_path, Some(passphrase.as_str())).map_err(|e| e.into())
+        } else {
+            Err(e.into())
+        }
+    })
 }

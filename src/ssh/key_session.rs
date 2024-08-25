@@ -45,12 +45,12 @@ impl SshSession for KeySession {
         addrs: A,
     ) -> Result<Self> {
         let auth = auth.into();
-        let key_path = match auth {
+        let key_pair = match auth {
             AuthMethod::Key(path) => path,
             AuthMethod::Password(_) => anyhow::bail!("KeySession only supports key authentication"),
         };
 
-        let key_pair = load_secret_key(key_path, None)?;
+        //let key_pair: key::KeyPair = load_secret_key(key_path, None)?;
 
         let config = client::Config {
             //inactivity_timeout: Some(Duration::from_secs(5)),

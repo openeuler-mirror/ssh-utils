@@ -1,5 +1,5 @@
-use std::path::PathBuf;
 use anyhow::Result;
+use russh_keys::key;
 use tokio::net::ToSocketAddrs;
 
 #[async_trait::async_trait]
@@ -18,5 +18,5 @@ pub trait SshSession {
 
 pub enum AuthMethod {
     Password(String),
-    Key(PathBuf),
+    Key(key::KeyPair),
 }

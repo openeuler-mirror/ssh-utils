@@ -1897,6 +1897,7 @@ dependencies = [
  "ratatui",
  "rpassword",
  "russh",
+ "russh-keys",
  "rust-argon2",
  "serde",
  "sha2",
