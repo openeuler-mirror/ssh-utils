@@ -344,11 +344,13 @@ impl<'a> App<'a> {
                                         decrypt_password(
                                             &s.id,
                                             &s.password,
-                                            &convert_to_array(&self.encryption_key).unwrap(),
+                                            &convert_to_array(&self.encryption_key).map_err(
+                                                |e| anyhow::anyhow!("encryption key convert failed: {}", e),
+                                            )?,
                                         )
-                                        .unwrap()
+                                        .map_err(|e| anyhow::anyhow!("password decrypt failed: {}", e))
                                     })
-                                }) {
+                                }).transpose()? {
                                     if cfg!(debug_assertions) {
                                         debug_log!("debug.log", "IP: {}", server.address);
                                         debug_log!("debug.log", "Port: {}", server.port);
@@ -376,14 +378,18 @@ impl<'a> App<'a> {
                                                 continue;
                                             }
                                             let key_path = key_path.unwrap(); // unwrap is safe here
-                                            let key_pair: Result<KeyPair, anyhow::Error> = load_key_with_passphrase(key_path, &mut terminal);
+                                            let key_pair: Result<KeyPair, anyhow::Error> =
+                                                load_key_with_passphrase(key_path, &mut terminal);
                                             let key_pair = match key_pair {
                                                 Ok(key_pair) => key_pair,
                                                 Err(_) => {
-                                                    self.render_popup("Wrong passphrase.".to_string(), PopupType::Error)?;
+                                                    self.render_popup(
+                                                        "Wrong passphrase.".to_string(),
+                                                        PopupType::Error,
+                                                    )?;
                                                     self.is_connecting = false;
                                                     continue;
-                                                },
+                                                }
                                             };
                                             KeySession::connect(
                                                 server_username.clone(),
@@ -530,11 +536,16 @@ fn find_best_key() -> Option<PathBuf> {
     None
 }
 
-fn load_key_with_passphrase(key_path: PathBuf, terminal: &mut Terminal<impl Backend>) -> Result<russh_keys::key::KeyPair> {
+fn load_key_with_passphrase(
+    key_path: PathBuf,
+    terminal: &mut Terminal<impl Backend>,
+) -> Result<russh_keys::key::KeyPair> {
     load_secret_key(key_path.clone(), None).or_else(|e| {
         if let russh_keys::Error::KeyIsEncrypted = e {
             let mut input_box = PopupInputBox::new(" Input key's passphrase: ".to_string());
-            let passphrase = input_box.run(terminal)?.ok_or_else(|| anyhow::anyhow!("Input is empty"))?;
+            let passphrase = input_box
+                .run(terminal)?
+                .ok_or_else(|| anyhow::anyhow!("Input is empty"))?;
             load_secret_key(key_path, Some(passphrase.as_str())).map_err(|e| e.into())
         } else {
             Err(e.into())

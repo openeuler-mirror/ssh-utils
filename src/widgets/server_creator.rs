@@ -166,18 +166,17 @@ impl<'a> ServerCreator<'a> {
         encryption_key: &'a EncryptionKey,
         server_id: &str,
     ) -> Result<Self> {
-        let server = config.servers.iter().find(|s| s.id == server_id).unwrap();
-        let password = vault
-            .servers
-            .iter()
-            .find(|s| s.id == server_id)
-            .unwrap()
-            .password
-            .clone();
+        let server = config.servers.iter().find(|s| s.id == server_id)
+            .ok_or_else(|| anyhow::anyhow!("can't find server."))?;
+        let password = vault.servers.iter().find(|s| s.id == server_id)
+            .ok_or_else(|| anyhow::anyhow!("can't find server password."))?
+            .password.clone();
         let decrypted_password = decrypt_password(
             &server_id,
             &password,
-            &convert_to_array(&encryption_key).unwrap(),
+            &convert_to_array(&encryption_key).map_err(
+                |e| anyhow::anyhow!("encryption key convert failed: {}", e),
+            )?,
         )?;
         Ok(Self {
             input: vec![
