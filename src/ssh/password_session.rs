@@ -1,15 +1,11 @@
 use crate::ssh::ssh_session::{SshSession, AuthMethod};
-use std::convert::TryFrom;
-use std::env;
 use std::sync::Arc;
-
 use anyhow::Result;
 use async_trait::async_trait;
-use crossterm::terminal::size;
 use russh::keys::*;
 use russh::*;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::ToSocketAddrs;
+use super::common::SshChannel;
 
 pub struct Client {}
 
@@ -29,7 +25,7 @@ impl client::Handler for Client {
 }
 
 pub struct PasswordSession {
-    session: client::Handle<Client>,
+    session: client::Handle<Client>
 }
 
 #[async_trait]
@@ -59,73 +55,15 @@ impl SshSession for PasswordSession {
                 anyhow::bail!("Key authentication not implemented for PasswordSession");
             }
         }
-
-        Ok(Self { session })
+        Ok(Self { 
+            session
+        })
     }
 
     async fn call(&mut self, command: &str) -> Result<u32> {
-        let mut channel = self.session.channel_open_session().await?;
-
-        // This example doesn't terminal resizing after the connection is established
-        let (w, h) = size()?;
-
-        // Request an interactive PTY from the server
-        channel
-            .request_pty(
-                false,
-                &env::var("TERM").unwrap_or("xterm".into()), // TERM=xterm 是一个环境变量设置，用于指定终端类型
-                w as u32,
-                h as u32,
-                0,
-                0,
-                &[], // ideally you want to pass the actual terminal modes here
-            )
-            .await?;
-        channel.exec(true, command).await?;
-
-        let code;
-        let mut stdin = tokio_fd::AsyncFd::try_from(0)?;
-        let mut stdout = tokio_fd::AsyncFd::try_from(1)?;
-        let mut buf = vec![0; 1024];
-        let mut stdin_closed = false;
-
-        loop {
-            // Handle one of the possible events:
-            tokio::select! {
-                // There's terminal input available from the user
-                r = stdin.read(&mut buf), if !stdin_closed => {
-                    match r {
-                        Ok(0) => { // 没有输入
-                            stdin_closed = true;
-                            channel.eof().await?;
-                        },
-                        // Send it to the server
-                        Ok(n) => channel.data(&buf[..n]).await?, //发送数据
-                        Err(e) => return Err(e.into()),
-                    };
-                },
-                // There's an event available on the session channel
-                Some(msg) = channel.wait() => {
-                    match msg {
-                        // Write data to the terminal
-                        ChannelMsg::Data { ref data } => {
-                            stdout.write_all(data).await?;
-                            stdout.flush().await?;
-                        }
-                        // The command has returned an exit code
-                        ChannelMsg::ExitStatus { exit_status } => {
-                            code = exit_status;
-                            if !stdin_closed {
-                                channel.eof().await?;
-                            }
-                            break;
-                        }
-                        _ => {}
-                    }
-                },
-            }
-        }
-        Ok(code)
+        let channel = self.session.channel_open_session().await?;
+        let mut ssh_channel = SshChannel::new(channel).await?;
+        ssh_channel.call(command).await
     }
 
     async fn close(&mut self) -> Result<()> {
