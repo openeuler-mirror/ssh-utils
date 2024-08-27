@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::sync::Arc;
 use anyhow::Result;
 use async_trait::async_trait;
@@ -81,23 +80,4 @@ impl SshSession for KeySession {
             .await?;
         Ok(())
     }
-}
-
-#[derive(clap::Parser)]
-#[clap(trailing_var_arg = true)]
-pub struct Cli {
-    #[clap(index = 1)]
-    host: String,
-
-    #[clap(long, default_value_t = 22)]
-    port: u16,
-
-    #[clap(long, short)]
-    username: String,
-
-    #[clap(long, short = 'k')]
-    private_key: PathBuf,
-
-    #[clap(num_args = 1.., index = 2, required = true)]
-    command: Vec<String>,
 }

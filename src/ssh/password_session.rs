@@ -73,22 +73,3 @@ impl SshSession for PasswordSession {
         Ok(())
     }
 }
-
-#[derive(clap::Parser)]
-#[clap(trailing_var_arg = true)]
-pub struct Cli {
-    #[clap(index = 1)]
-    host: String,
-
-    #[clap(long, default_value_t = 22)]
-    port: u16,
-
-    #[clap(long, short)]
-    username: String,
-
-    #[clap(long, short)]
-    password: String,
-
-    #[clap(num_args = 1.., index = 2, required = true)]
-    command: Vec<String>,
-}
