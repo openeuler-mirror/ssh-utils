@@ -1,10 +1,10 @@
-.PHONY: test integration_tests
+.PHONY: test ssh_test
 
 test:
 	@echo "Running regular tests..."
 	cargo test
 
-integration_test:
+ssh_test:
 	@echo "Please enter the following information for integration tests:"
 	@read -p "SSH username: " ssh_user && \
 	read -p "SSH key path: " ssh_key_path && \
