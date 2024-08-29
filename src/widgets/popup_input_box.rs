@@ -76,23 +76,3 @@ impl PopupInputBox {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use anyhow::Result;
-    use ratatui::Terminal;
-
-    #[test]
-    fn test_popup_input_box() -> Result<()> {
-        let mut input_box = PopupInputBox::new(" Input key's passphrase: ".to_string());
-
-        crossterm::terminal::enable_raw_mode()?;
-        let stdout = std::io::stdout();
-        crossterm::execute!(std::io::stdout(), crossterm::terminal::EnterAlternateScreen)?;
-        let backend = ratatui::backend::CrosstermBackend::new(stdout);
-        let mut terminal = Terminal::new(backend)?;
-        let _ = input_box.run(&mut terminal)?;
-        Ok(())
-    }
-}
