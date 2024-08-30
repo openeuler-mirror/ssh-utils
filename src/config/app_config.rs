@@ -11,15 +11,19 @@ pub struct Server {
     pub name: String,
     pub ip: String,
     pub user: String,
+    pub shell: String,
+    pub port: u16,
 }
 
 impl Server {
-    pub fn new(name: String, ip: String, user: String) -> Self {
+    pub fn new(name: String, ip: String, user: String, shell: String, port: u16) -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
             name,
             ip,
             user,
+            shell,
+            port,
         }
     }
 }
@@ -63,6 +67,8 @@ impl Config {
             server.name = new_server.name.clone();
             server.ip = new_server.ip.clone();
             server.user = new_server.user.clone();
+            server.shell = new_server.shell.clone();
+            server.port = new_server.port;
             self.save()?;
         } else {
             return Err(anyhow::anyhow!("Server with id {} not found", id));

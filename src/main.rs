@@ -1,10 +1,13 @@
 mod app;
 mod config;
 mod helper;
+mod macros;
+mod ssh;
 mod widgets;
 
 use anyhow::{Context, Result};
 use app::App;
+use clap::Parser;
 use config::{
     app_config,
     app_vault::{check_if_vault_bin_exists, decrypt_vault, EncryptionKey, Vault},
@@ -13,11 +16,12 @@ use config::{
 use crossterm::{
     cursor::{RestorePosition, SavePosition},
     execute,
+    style::{Color, ResetColor, SetForegroundColor},
     terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType},
 };
 use helper::{get_file_path, ENCRYPTED_FILE};
 use ratatui::{backend::CrosstermBackend, Terminal, TerminalOptions, Viewport};
-use std::io::stdout;
+use std::io::{stdout, Write};
 use std::{
     fs::File,
     io::{self, Read, Stdout},
@@ -25,7 +29,44 @@ use std::{
 };
 use zeroize::Zeroize;
 
-fn main() -> Result<()> {
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+struct Cli {
+    /// remove all of the config file
+    #[arg(short, long)]
+    flush: bool,
+}
+
+fn flush_config() -> Result<()> {
+    execute!(
+        io::stdout(),
+        SetForegroundColor(Color::Red),
+        crossterm::style::Print("Warning: You are about to delete all configuration files.\n"),
+        ResetColor
+    )?;
+    print!("Are you sure you want to continue? (y/N): ");
+    io::stdout().flush()?;
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+
+    if input.trim().to_lowercase() == "y" {
+        let mut path = dirs::home_dir().context("Unable to reach user's home directory.")?;
+        path.push(".config/ssh-utils/");
+        std::fs::remove_dir_all(&path).context("Failed to delete config directory")?;
+        println!("Config files have been successfully deleted.");
+    } else {
+        println!("Operation cancelled.");
+    }
+    Ok(())
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let cli = Cli::parse();
+    if cli.flush {
+        flush_config()?;
+        std::process::exit(0);
+    }
     // Setup panic hook
     panic::set_hook(Box::new(panic_hook));
     app_config::ensure_config_exists()?;
@@ -35,7 +76,7 @@ fn main() -> Result<()> {
     let app = App::new(&mut config, &mut vault, encryption_key)?;
     let mut terminal = create_terminal()?;
     setup_terminal(&mut terminal)?;
-    run_app(app, &mut terminal)?;
+    run_app(app, &mut terminal).await?;
     restore_terminal()?;
     Ok(())
 }
@@ -62,7 +103,7 @@ fn init_vault(encryption_key: &mut EncryptionKey) -> Result<Vault, anyhow::Error
     if check_if_vault_bin_exists()? {
         for attempt in 1..=3 {
             let prompt_message = if attempt == 1 {
-                "Enter passphrase: ".to_string()
+                "please enter your passphrase: ".to_string()
             } else {
                 format!("Enter passphrase (Attempt {} of 3): ", attempt)
             };
@@ -97,7 +138,13 @@ fn init_vault(encryption_key: &mut EncryptionKey) -> Result<Vault, anyhow::Error
             }
         }
     } else {
-        let mut passphrase = prompt_passphrase("Enter passphrase (empty for no passphrase): ")?;
+        execute!(
+            io::stdout(),
+            SetForegroundColor(Color::Green),
+            crossterm::style::Print("You are the first time to use this tool.\n"),
+            ResetColor
+        )?;
+        let mut passphrase = prompt_passphrase("Enter a passphrase to start (empty for no passphrase): ")?;
         let mut confirm_passphrase = prompt_passphrase("Enter the same passphrase again: ")?;
         if passphrase == confirm_passphrase {
             let try_encryption_key: [u8; 32] = derive_key_from_password(passphrase.as_str())?;
@@ -115,12 +162,11 @@ fn init_vault(encryption_key: &mut EncryptionKey) -> Result<Vault, anyhow::Error
     unreachable!()
 }
 
-
-fn run_app(
-    mut app: App,
-    terminal: &mut Terminal<CrosstermBackend<Stdout>>,
+async fn run_app<'a>(
+    mut app: App<'a>,
+    terminal: &'a mut Terminal<CrosstermBackend<Stdout>>,
 ) -> Result<(), anyhow::Error> {
-    app.run(terminal)?;
+    app.run(terminal).await?;
     Ok(())
 }
 
