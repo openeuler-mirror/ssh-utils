@@ -103,7 +103,7 @@ fn init_vault(encryption_key: &mut EncryptionKey) -> Result<Vault, anyhow::Error
     if check_if_vault_bin_exists()? {
         for attempt in 1..=3 {
             let prompt_message = if attempt == 1 {
-                "please enter a passphrase: ".to_string()
+                "please enter your passphrase: ".to_string()
             } else {
                 format!("Enter passphrase (Attempt {} of 3): ", attempt)
             };
