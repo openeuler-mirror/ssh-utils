@@ -74,7 +74,9 @@ pub fn aes_decrypt(key: &[u8], iv: &[u8], data: &[u8]) -> Result<Vec<u8>> {
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, process::Command};
+    use std::{io::Write, process::Command};
+
+    use tempfile::NamedTempFile;
 
     use super::*;
 
@@ -146,9 +148,9 @@ mod tests {
         let data = b"Hello, AES encryption!";
 
         // Write data to a temporary file
-        let data_file_path = "data.txt";
-        let mut file = fs::File::create(data_file_path).expect("Failed to create file");
-        std::io::Write::write_all(&mut file, data).expect("Failed to write data to file");
+        let mut data_file = NamedTempFile::new().expect("Failed to create temporary file");
+        data_file.write_all(data).expect("Failed to write data to file");
+        let data_file_path = data_file.path().to_str().unwrap();
 
         // Use OpenSSL to generate the expected encrypted value
         let expected_encrypted_output = Command::new("openssl")
@@ -170,9 +172,9 @@ mod tests {
         assert_eq!(encrypted_data, expected_encrypted_data, "Encrypted data should match the expected value");
 
         // Write encrypted_data to a temporary file
-        let encrypted_file_path = "encrypted_data.bin";
-        let mut encrypted_file = fs::File::create(encrypted_file_path).expect("Failed to create file");
-        std::io::Write::write_all(&mut encrypted_file, &encrypted_data).expect("Failed to write encrypted data to file");
+        let mut encrypted_file = NamedTempFile::new().expect("Failed to create temporary file");
+        encrypted_file.write_all(&encrypted_data).expect("Failed to write encrypted data to file");
+        let encrypted_file_path = encrypted_file.path().to_str().unwrap();
 
         // Use OpenSSL to generate the expected decrypted value
         let expected_decrypted_output = Command::new("openssl")
@@ -193,9 +195,5 @@ mod tests {
         let decrypted_data = aes_decrypt(key, iv, &encrypted_data).expect("Failed to decrypt data");
         assert_eq!(decrypted_data, data, "Decrypted data should match original data");
         assert_eq!(decrypted_data, expected_decrypted_data, "Decrypted data should match the expected value");
-
-        // Delete temporary files
-        fs::remove_file(data_file_path).expect("Failed to delete data file");
-        fs::remove_file(encrypted_file_path).expect("Failed to delete encrypted file");
     }
 }

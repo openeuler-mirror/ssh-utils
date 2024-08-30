@@ -3,6 +3,13 @@ name = "ssh-utils"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "ssh_utils_lib"
+path = "src/lib.rs"
+
+[features]
+integration_tests = []
+
 [dependencies]
 anyhow = "1.0.86"
 backtrace = "0.3.73"
@@ -26,3 +33,4 @@ russh-keys = "0.45.0"
 tokio = { version = "1.36.0", features = ["full"] }
 async-trait = "0.1.81"
 tokio-fd = "0.3.0"
+tempfile = "3.12.0"

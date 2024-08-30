@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use std::{fs, path::PathBuf};
+use std::{fs, path::{Path, PathBuf}};
 
 use crate::helper::{get_file_path, CONFIG_FILE};
 
@@ -136,18 +136,24 @@ pub fn ensure_config_exists() -> Result<()> {
     from "~/.config/ssh-utils/config.toml"
 */
 pub fn read_config() -> Result<Config> {
-    let config_path = if cfg!(debug_assertions) {
-        ".config/ssh-utils/config.toml".into()
+    let config_path = get_config_path()?;
+    read_config_from_path(&config_path)
+}
+
+fn get_config_path() -> Result<PathBuf> {
+    if cfg!(debug_assertions) {
+        Ok(".config/ssh-utils/config.toml".into())
     } else {
         let mut path = dirs::home_dir().context("Unable to reach user's home directory.")?;
         path.push(".config/ssh-utils/config.toml");
-        path
-    };
+        Ok(path)
+    }
+}
 
+fn read_config_from_path<P: AsRef<Path>>(config_path: P) -> Result<Config> {
     let config_str = fs::read_to_string(&config_path)
-        .with_context(|| format!("Unable to read ssh-utils' config file at {:?}", config_path))?;
+        .with_context(|| format!("Unable to read ssh-utils' config file at {:?}", config_path.as_ref()))?;
 
-    // Check if the config file content is empty
     if config_str.trim().is_empty() {
         return Ok(Config::default());
     }
@@ -156,4 +162,49 @@ pub fn read_config() -> Result<Config> {
         .context("Failed to parse ssh-utils' config file.")?;
 
     Ok(config)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+    use std::fs;
+
+    #[test]
+    fn test_read_config_empty_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("config.toml");
+        fs::write(&config_path, "").unwrap();
+        let config = read_config_from_path(&config_path).unwrap();
+        assert!(config.servers.is_empty());
+    }
+
+    #[test]
+    fn test_read_config_with_servers() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("config.toml");
+        let config_content = r#"
+            [[servers]]
+            id = "1"
+            name = "Server1"
+            ip = "192.168.1.1"
+            user = "user1"
+            shell = "/bin/bash"
+            port = 22
+
+            [[servers]]
+            id = "2"
+            name = "Server2"
+            ip = "192.168.1.2"
+            user = "user2"
+            shell = "/bin/zsh"
+            port = 2222
+        "#;
+        fs::write(&config_path, config_content).unwrap();
+
+        let config = read_config_from_path(&config_path).unwrap();
+        assert_eq!(config.servers.len(), 2);
+        assert_eq!(config.servers[0].name, "Server1");
+        assert_eq!(config.servers[1].port, 2222);
+    }
 }

@@ -552,3 +552,40 @@ fn load_key_with_passphrase(
         }
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs::File;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_find_best_key() {
+        // Create a temporary directory to simulate the home directory
+        let temp_dir = TempDir::new().unwrap();
+        let home_dir = temp_dir.path();
+        let ssh_dir = home_dir.join(".ssh");
+        std::fs::create_dir(&ssh_dir).unwrap();
+
+        // Simulate environment variable
+        std::env::set_var("HOME", home_dir.to_str().unwrap());
+
+        // Test scenario 1: No key files present
+        assert_eq!(find_best_key(), None);
+
+        // Test scenario 2: Only id_rsa present
+        File::create(ssh_dir.join("id_rsa")).unwrap();
+        assert_eq!(find_best_key(), Some(ssh_dir.join("id_rsa")));
+
+        // Test scenario 3: Both id_rsa and id_ed25519 present
+        File::create(ssh_dir.join("id_ed25519")).unwrap();
+        assert_eq!(find_best_key(), Some(ssh_dir.join("id_ed25519")));
+
+        // Test scenario 4: Multiple keys present, should select the highest priority one
+        File::create(ssh_dir.join("id_ecdsa")).unwrap();
+        assert_eq!(find_best_key(), Some(ssh_dir.join("id_ecdsa")));
+
+        // Cleanup
+        temp_dir.close().unwrap();
+    }
+}
