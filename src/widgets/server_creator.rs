@@ -373,6 +373,11 @@ impl<'a> ServerCreator<'a> {
                             // Save current server's config
                             if to_insert == 's' {
                                 if key.modifiers == event::KeyModifiers::CONTROL {
+                                    if self.input.iter().enumerate().any(|(i, input)| {
+                                        i != CurrentSelect::Password as usize && input.trim().is_empty()
+                                    }) {
+                                        continue;
+                                    }
                                     let encryption_key = convert_to_array(&self.encryption_key)?;
                                     let mut config_server = Server::new(
                                         self.input[CurrentSelect::Name as usize].clone(),
