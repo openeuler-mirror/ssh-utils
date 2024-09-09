@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use russh::keys::*;
 use russh::*;
 use tokio::net::ToSocketAddrs;
-use super::common::SshChannel;
+use super::common::{default_ssh_config, SshChannel};
 
 pub struct Client {}
 
@@ -35,7 +35,7 @@ impl SshSession for PasswordSession {
         auth: impl Into<AuthMethod> + Send,
         addrs: A,
     ) -> Result<Self> {
-        let config = client::Config::default();
+        let config = default_ssh_config();
         let config = Arc::new(config);
         let sh = Client {};
 

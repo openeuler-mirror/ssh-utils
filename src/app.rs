@@ -452,12 +452,15 @@ impl<'a> App<'a> {
                                                         PopupType::Error,
                                                     )?;
                                                     self.is_connecting = false;
+                                                    debug_log!("debug.log", "Close error: {:?}", e);
                                                 }
                                             }
                                             terminal.clear()?;
                                             debug_log!("debug.log", "Exitcode: {:?}", code);
                                             self.is_connecting = false;
-                                            self.show_popup = false;
+                                            if code == 0 {
+                                                self.show_popup = false;
+                                            }
                                         }
                                         Err(e) => {
                                             self.show_popup = true;
