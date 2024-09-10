@@ -9,12 +9,15 @@ License:        MulanPSL-2.0
 URL:            https://gitee.com/openeuler/ssh-utils
 Source0:        https://gitee.com/openeuler/ssh-utils/repository/archive/v0.1.0.zip
 
-BuildRequires:  rust cargo openssl-devel
+BuildRequires:  rust cargo openssl-devel wget
 
 %description
 ssh-utils is a tool for fast ssh connections.
 
 %prep
+if [ ! -f %{_sourcedir}/v%{version}.zip ]; then
+    wget -O %{_sourcedir}/v%{version}.zip https://gitee.com/openeuler/ssh-utils/repository/archive/v%{version}.zip
+fi
 %setup -q -n %{name}-v%{version}
 
 %build
