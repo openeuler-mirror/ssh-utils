@@ -17,6 +17,8 @@ This tool provides a set of command-line utilities that allow you to select the 
 
 ##### 1. Install via cargo
 ```bash
+# OpenEuler : dnf install openssl-devel
+# Debian/Ubuntu : apt install libssl-dev
 cargo install ssh-utils
 ```
 
@@ -25,6 +27,8 @@ Download the executable file or installation package for your platform from the 
 
 ##### 3. Install from source code
 ```bash
+# OpenEuler : dnf install openssl-devel
+# Debian/Ubuntu : apt install libssl-dev
 git clone https://gitee.com/openeuler/ssh-utils
 cd ssh-utils
 cargo build --release
