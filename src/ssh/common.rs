@@ -1,13 +1,21 @@
 use anyhow::Result;
 use crossterm::terminal::size;
 use russh::{client::Msg, *};
-use std::convert::TryFrom;
+use std::{convert::TryFrom, time::Duration};
 use std::env;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 pub struct SshChannel {
     channel: Channel<Msg>,
     last_size: (u16, u16),
+}
+
+pub fn default_ssh_config() -> client::Config {
+    client::Config {
+        keepalive_interval: Some(Duration::from_secs(15)),
+        // 其他字段使用默认值
+        ..Default::default()
+    }
 }
 
 impl SshChannel {

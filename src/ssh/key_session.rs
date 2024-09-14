@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use russh::keys::*;
 use russh::*;
 use tokio::net::ToSocketAddrs;
-use super::common::SshChannel;
+use super::common::{default_ssh_config, SshChannel};
 use super::ssh_session::{AuthMethod, SshSession};
 
 pub struct Client {}
@@ -46,10 +46,7 @@ impl SshSession for KeySession {
 
         //let key_pair: key::KeyPair = load_secret_key(key_path, None)?;
 
-        let config = client::Config {
-            //inactivity_timeout: Some(Duration::from_secs(5)),
-            ..<_>::default()
-        };
+        let config = default_ssh_config();
 
         let config = Arc::new(config);
         let sh = Client {};
