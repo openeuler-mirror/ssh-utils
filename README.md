@@ -16,6 +16,8 @@
 
 ##### 1. 通过 cargo 安装
 ```bash
+# OpenEuler : dnf install openssl-devel
+# Debian/Ubuntu : apt install libssl-dev
 cargo install ssh-utils
 ```
 
@@ -24,6 +26,8 @@ cargo install ssh-utils
 
 ##### 3. 通过源码安装
 ```bash
+# OpenEuler : dnf install openssl-devel
+# Debian/Ubuntu : apt install libssl-dev
 git clone https://gitee.com/openeuler/ssh-utils
 cd ssh-utils
 cargo build --release

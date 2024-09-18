@@ -2,10 +2,25 @@
 name = "ssh-utils"
 version = "0.1.0"
 edition = "2021"
+license = "MulanPSL-2.0"
+description = "ssh-utils is a tool for fast ssh connections."
+repository = "https://gitee.com/openeuler/ssh-utils"
+readme = "README.md"
+keywords = ["ssh", "tool", "tui", "cli"]
+categories = ["command-line-utilities"]
+include = [
+    "src/*",
+    "README.md",
+    "Cargo.toml"
+]
 
 [lib]
 name = "ssh_utils_lib"
 path = "src/lib.rs"
+
+[[bin]]
+name = "ssh-utils"
+path = "src/main.rs"
 
 [features]
 integration_tests = []
@@ -20,7 +35,7 @@ ratatui = "0.28"
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.8.16"
 rand = "0.8.5"
-openssl = "0.10.66"
+openssl = { version = "0.10.66", features = ["vendored"] }
 sha2 = "0.10.8"
 rust-argon2 = "2.1.0"
 rpassword = "7.3.1"
