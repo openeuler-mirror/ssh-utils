@@ -1891,7 +1891,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "ssh-utils"
+name = "ssh-link"
 version = "0.1.0"
 dependencies = [
  "anyhow",

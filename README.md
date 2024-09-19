@@ -18,7 +18,7 @@
 ```bash
 # OpenEuler : dnf install openssl-devel
 # Debian/Ubuntu : apt install libssl-dev
-cargo install ssh-utils
+cargo install ssh-link
 ```
 
 ##### 2. 通过 Release 安装
